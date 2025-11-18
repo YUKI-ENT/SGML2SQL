@@ -1,0 +1,23 @@
+- マイ医薬品サービス；https://push.info.pmda.go.jp/mypage/view/mypage/login.html からSGMLデータをダウンロード
+- Python仮想環境の導入
+Pythonの仮想環境をセットアップします。
+
+(a) 仮想環境のセットアップ
+# パッケージリストを更新し、venvとpipをインストール
+sudo apt update
+sudo apt install -y python3-venv python3-pip
+
+# 仮想環境を作成
+python3 -m venv ./venv
+
+#アクティベート
+source ./venv/bin/activate
+
+# 依存関係のインストール
+pip install -r requirements.txt
+
+- 解凍
+unzip -O cp932 pmda_all_sgml_xml_20251116.zip
+
+- 既存データバックアップ
+pg_dump -h HOST -p 5432 -U postgres -F -c -Z 9 --no-owner --no-privileges -t sgml_rawdata -t sgml_interaction -f sgml.dump
