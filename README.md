@@ -1,41 +1,65 @@
 # SGML2SQL ― PMDA「マイ医薬品」SGML → PostgreSQL 変換ツール群
 
 ## 概要
-**SGML2SQL** は、PMDA が提供する **「マイ医薬品」サービスでダウンロードした SGML 形式の薬剤添付文書** を  
-解析・平坦化し、**PostgreSQL データベースへアップロードするためのスクリプト群**です。
-
-本ツールは、**[OQSDrug（オンライン資格確認 + 薬剤データベース統合システム）](https://github.com/YUKI-ENT/OQSDrug2)** での利用を前提に設計しています。
-
-- PMDA の SGML → Python パーサ  
-- 添付文書（薬効・禁忌・相互作用など）の構造化  
-- PostgreSQL への自動テーブル生成・INSERT  
-- OQSDrug 用に最適化された JSON / SQL スキーマ  
+**SGML2SQL** は、PMDA が提供する **[「マイ医薬品」サービス](https://push.info.pmda.go.jp/mypage/view/mypage/login.html)からダウンロードした SGML 形式の薬剤添付文書** を、
+**[OQSDrug2（オンライン資格確認薬歴健診歴取得ツール）](https://github.com/YUKI-ENT/OQSDrug2)で利用するPostgreSQL データベース形式** に変換するためのスクリプト群です。
 
 ---
 
-## 特徴
+## 使用方法
+1. このリポジトリをローカル環境にクローンします。
+  ```bash
+  git clone https://github.com/YUKI-ENT/SGML2SQL.git
+  cd SGML2SQL
+  ```
 
-### ✔ SGML の複雑な階層構造をフラット化  
-PMDA の SGML はタグ構造が深く複雑ですが、本ツールでは以下を平坦化して扱いやすい JSON / SQL に変換します。
+2.  **[マイ医薬品サービス](https://push.info.pmda.go.jp/mypage/view/mypage/login.html)**  にアカウントを作り、一括ダウンロードメニューからダウンロードします。
+  ![スクリーンショット 2025-11-18 221657](https://github.com/user-attachments/assets/99e50393-a01f-4abc-a81f-4de874079c19)
+`SGML/XML`にチェックを入れ、一括ダウンロードします。約900MBあるので、ダウンロードに時間がかかります。
+  ![スクリーンショット 2025-11-18 221842](https://github.com/user-attachments/assets/1c5ab114-ebdd-420b-9780-0d05b1646d22)
 
-- 一般名 / 薬効分類  
-- 使用上の注意（禁忌／慎重投与）  
-- 相互作用（相手薬剤リスト、症状、メカニズム、等）  
-- 用法・用量  
-- 妊婦投与 / 小児投与  
-- その他の注意  
+3. ダウンロードしたzipファイルを `SGML2SQL/SGML` フォルダにコピーして解凍します。Unzipするとき、Linuxでは `-O cp932`とSJIS指定で解凍します。
+  ```bash
+  cd SGML
+  unzip -O cp932 pmda_all_sgml_xml_20251116.zip
+  ```
 
-### ✔ PostgreSQL のテーブルを自動生成  
-設定ファイル `config.json` に従って、以下のテーブルを作成します。
+4. **Python仮想環境のセットアップ**
+   - パッケージリストを更新し、venvとpipをインストール(python3、 venvが未導入の場合)
+     ```bash
+     sudo apt update
+     sudo apt install -y python3-venv python3-pip
+     ```
+   - 仮想環境を作成
+     ```
+     cd ~/SGML2SQL
+     # 仮想環境を作成
+     python3 -m venv ./venv
+     #アクティベート: 成功すると、(venv) yuki@ai-server:~/SGML2SQL $ のようなプロンプトになります
+     source ./venv/bin/activate
+     # 依存関係のインストール
+     pip install -r requirements.txt
+      ```
+5. 既存データバックアップ（以前のバージョンの薬剤添付文書データがある場合）
+   - `dump_sgml.sh` を編集し、postgreSQLサーバーアドレスやユーザー名を環境に合わせて書き換えてください。その後実行すると`backup/`フォルダに`sgml_yyyymmdd.backup`のようなファイル名でバックアップが作成されます(約230MB) 。このデータファイルはpg_restoreやOQSDrugからリストアできます。
+     ```bash
+     nano dump_sgml.sh
+     bash dump_sgml.sh
+     ```
 
-- `sgml_rawdata`
-- `sgml_interaction`
-- `sgml_contraindication`（必要に応じて）
-- その他、OQSDrug 構造に合わせた付随テーブル
+6. **`config.json`の作成編集**
+   - 添付の`config.json.sample`を`config.json`としてコピーし、編集します。
+   - ` "db": {"host": "localhost" `、`user`、`password`、`DI_folder`あたりを環境に合わせて書き換えてください。
+7. **21_sgml2rawdata.pyの実行**
+   - SGMLファイルからSQLサーバーにXMLデータをアップロードします。
+    ```bash
+    python3 21_sgml2rawdata.py
+    ```
+    5-10分くらいかかります。エラーやログは`logs/`フォルダに出力されます。成功すると、postgreSQLサーバーに`sgml_rawdata`テーブルが作成されます。
 
-
-
----
-
-## ディレクトリ構成（例）
-
+9. **22_build_sgml_interaction.pyの実行**
+   - こちらは`sgml_rawdata`をもとに、薬剤相互作用データの抽出を行います。
+   ```bash
+    python3 22_build_sgml_interaction.py
+    ```
+    10-20秒くらいで終了します。成功すると、`sgml_interaction`テーブルが作成されます。
