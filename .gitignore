@@ -1,9 +1,11 @@
-SGML/
-config.json
+SGML/*
+!SGML/.gitkeep
 #dump_sgml.sh
-backup/
+backup/*
+!backup/.gitkeep
 *.backup
-logs/
+logs/*
+!logs/.gitkeep
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

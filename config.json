@@ -1,0 +1,22 @@
+{
+  "db": {
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "OQSDrug_data",
+    "user": "postgres",
+    "password": "medicalin"
+  },
+  "ollama_url": "http://localhost:11434/api/generate",
+  "ollama_model": "gemma3:4b",
+  "chunk_length": 2000,
+  "chunk_overlap": 100,
+  "ollama_timeout": 120,
+  "gpu_cooling_wait": 15,
+  "DI_folder": "./SGML/pmda_all_sgml_xml_20251116/SGML_XML/",
+  "sgml_table": "public.sgml_rawdata",
+  "sgml_interaction_table": "public.sgml_interaction",
+  "sgml_women_table": "public.test_sgml_women",
+  "sgml_women_risk_table": "public.test_sgml_women_risk_labels",
+  "batch_size": 500,
+  "progress_every": 2000
+}
