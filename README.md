@@ -14,7 +14,8 @@
   ```
 
 2.  **[マイ医薬品サービス](https://push.info.pmda.go.jp/mypage/view/mypage/login.html)**  にアカウントを作り、一括ダウンロードメニューからダウンロードします。
-  ![スクリーンショット 2025-11-18 221657](https://github.com/user-attachments/assets/99e50393-a01f-4abc-a81f-4de874079c19)
+  ![スクリーンショット 2025-11-18 221657](https://github.com/user-attachments/assets/493657f4-b982-4a8a-81fd-6e4ea8ee465c)
+
 `SGML/XML`にチェックを入れ、一括ダウンロードします。約900MBあるので、ダウンロードに時間がかかります。
   ![スクリーンショット 2025-11-18 221842](https://github.com/user-attachments/assets/1c5ab114-ebdd-420b-9780-0d05b1646d22)
 
