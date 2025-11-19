@@ -16,6 +16,7 @@ import json
 import logging
 import time
 import re
+import zipfile
 from typing import Dict, List, Optional, Tuple, Any
 
 import psycopg2
@@ -57,6 +58,25 @@ db_conf = {
 XML_ROOT = config.get("DI_folder") or "./drug_information"
 TABLE_NAME = config.get("sgml_table", "public.sgml_rawdata")
 TABLE_BASENAME = TABLE_NAME.split(".")[-1]  # index名に使う
+
+# ===================== ZIP解凍 =====================================
+def extract_all_zips(root_dir):
+    """
+    PMDA 配布 SGML/XML データ内の ZIP をすべて再帰抽出する。
+    ZIP と同じフォルダに展開する。
+    """
+    for folder, _, files in os.walk(root_dir):
+        for f in files:
+            if f.lower().endswith(".zip"):
+                zip_path = os.path.join(folder, f)
+                print(f"[ZIP] Extracting: {zip_path}")
+
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as z:
+                        z.extractall(folder)
+                    print(f"[ZIP] OK → {folder}")
+                except Exception as e:
+                    print(f"[ZIP] ERROR: {e}")
 
 # ===================== XML 名前空間 & ヘルパ =====================
 PI_NS  = "http://info.pmda.go.jp/namespace/prescription_drugs/package_insert/1.0"
@@ -557,6 +577,11 @@ def main():
         logging.error(f"DI_folder が見つかりません: {XML_ROOT}")
         raise SystemExit(1)
 
+    # ★★★ ここで ZIP を全部展開する ★★★
+    logging.info(f"Extracting ZIP files under {XML_ROOT} ...")
+    extract_all_zips(XML_ROOT)
+    logging.info("ZIP extraction completed.")
+    
     files = iter_xml_files(XML_ROOT)
     total = len(files)
     if total == 0:
