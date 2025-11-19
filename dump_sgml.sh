@@ -22,7 +22,7 @@ mkdir -p "$OUTDIR"
 TS=$(date +"%Y%m%d-%H%M%S")
 
 # 出力ファイル名
-OUTFILE="${OUTDIR}/sgml_${TS}.backup"
+OUTFILE="${OUTDIR}/DrugSGMLdata_${TS}.backup"
 
 echo "=== SGML dump start ==="
 echo "Output file: ${OUTFILE}"
