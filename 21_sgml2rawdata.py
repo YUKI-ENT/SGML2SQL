@@ -336,6 +336,17 @@ def collect_indications_json(root: ET.Element):
 def collect_info_dose_admin_json(root: ET.Element):
     return elem_to_json(root.find("pi:InfoDoseAdmin", NS))
 
+#<sub>対策
+def lang_itertext(detail_elem: Optional[ET.Element]) -> Optional[str]:
+    """<Lang xml:lang='ja'> の全文（itertext）を取得"""
+    if detail_elem is None:
+        return None
+    for lang in detail_elem.findall("pi:Lang", NS):
+        if lang.get(f"{{{XMLNS}}}lang") == "ja":
+            txt = "".join(lang.itertext()).strip()
+            if txt:
+                return txt
+    return None
 
 # ===================== XML → 行化 =====================
 def parse_xml_to_rows(xml_path: str) -> List[Dict]:
@@ -348,7 +359,10 @@ def parse_xml_to_rows(xml_path: str) -> List[Dict]:
     prepared = get_text(root, "pi:DateOfPreparationOrRevision/pi:PreparationOrRevision/pi:YearMonth")
 
     generic     = text_ja(root.find("pi:GenericName/pi:Detail", NS)) or get_text(root, "pi:GenericName")
-    therapeutic = text_ja(root.find("pi:TherapeuticClassification/pi:Detail", NS)) or get_text(root, "pi:TherapeuticClassification")
+    #therapeutic = text_ja(root.find("pi:TherapeuticClassification/pi:Detail", NS)) or get_text(root, "pi:TherapeuticClassification")
+    therapeutic = lang_itertext(root.find("pi:TherapeuticClassification/pi:Detail", NS)) \
+           or text_ja(root.find("pi:TherapeuticClassification/pi:Detail", NS)) \
+           or get_text(root, "pi:TherapeuticClassification")
 
     # JSONBセクション
     approval_etc_json      = elem_to_json(root.find("pi:ApprovalEtc", NS))
