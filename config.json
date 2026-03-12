@@ -12,7 +12,7 @@
   "chunk_overlap": 100,
   "ollama_timeout": 120,
   "gpu_cooling_wait": 15,
-  "DI_folder": "./SGML/pmda_all_sgml_xml_20251116/SGML_XML/",
+  "DI_folder": "./SGML/pmda_all_sgml_xml_20260312/",
   "sgml_table": "public.sgml_rawdata",
   "sgml_interaction_table": "public.sgml_interaction",
   "sgml_women_table": "public.test_sgml_women",
