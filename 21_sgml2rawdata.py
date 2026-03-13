@@ -16,6 +16,7 @@ import json
 import logging
 import time
 import re
+import hashlib
 import zipfile
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -29,6 +30,7 @@ LOG_DIR = "./logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, f"{SCRIPT_BASENAME}.log")
 FAILED_CSV = os.path.join(LOG_DIR, "failed_files.csv")
+DUPLICATE_CSV = os.path.join(LOG_DIR, "duplicate_xml_files.csv")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +79,17 @@ def extract_all_zips(root_dir):
                     print(f"[ZIP] OK → {folder}")
                 except Exception as e:
                     print(f"[ZIP] ERROR: {e}")
+
+
+def file_sha256(path: str, chunk_size: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as rf:
+        while True:
+            chunk = rf.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
 
 # ===================== XML 名前空間 & ヘルパ =====================
 PI_NS  = "http://info.pmda.go.jp/namespace/prescription_drugs/package_insert/1.0"
@@ -570,9 +583,29 @@ def upsert_rows(conn, rows: List[Dict]) -> int:
 
 
 # ===================== 進捗支援 =====================
-def iter_xml_files(root_dir: str) -> List[str]:
+def iter_xml_files(root_dir: str) -> Tuple[List[str], List[Tuple[str, str, str]]]:
     pattern = os.path.join(root_dir, "**", "*.xml")
-    return glob.glob(pattern, recursive=True)
+    xml_files = sorted(glob.glob(pattern, recursive=True))
+    unique_files: List[str] = []
+    duplicates: List[Tuple[str, str, str]] = []
+    seen_hashes: Dict[str, str] = {}
+
+    for xml_path in xml_files:
+        try:
+            digest = file_sha256(xml_path)
+        except Exception as e:
+            logging.warning(f"[DUPCHECK] hash計算失敗: {xml_path} ({e})")
+            unique_files.append(xml_path)
+            continue
+
+        original = seen_hashes.get(digest)
+        if original is None:
+            seen_hashes[digest] = xml_path
+            unique_files.append(xml_path)
+        else:
+            duplicates.append((digest, original, xml_path))
+
+    return unique_files, duplicates
 
 
 def fmt_eta(seconds: float) -> str:
@@ -596,11 +629,22 @@ def main():
     extract_all_zips(XML_ROOT)
     logging.info("ZIP extraction completed.")
     
-    files = iter_xml_files(XML_ROOT)
+    files, duplicates = iter_xml_files(XML_ROOT)
     total = len(files)
     if total == 0:
         logging.warning(f"XMLが見つかりませんでした: {XML_ROOT}")
         return
+
+    with open(DUPLICATE_CSV, "w", encoding="utf-8") as wf:
+        wf.write("sha256,kept_file,skipped_file\n")
+        for digest, kept, skipped in duplicates:
+            wf.write(f"{digest},{kept},{skipped}\n")
+
+    if duplicates:
+        logging.warning(
+            f"内容が同一のXMLを {len(duplicates)} 件スキップします。"
+            f" 詳細: {DUPLICATE_CSV}"
+        )
 
     logging.info(f"Start import: root={XML_ROOT}, total_xml={total}")
     with open(FAILED_CSV, "w", encoding="utf-8") as wf:
