@@ -12,6 +12,10 @@ DB="OQSDrug_data"
 TABLES=(
   "sgml_rawdata"
   "sgml_interaction"
+  "drug_code_map"
+  "drug_code_map_version"
+  "drug_contraindication"
+  "drug_medis_generic"
 )
 
 # 出力フォルダ（必要なら変更）
