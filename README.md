@@ -64,3 +64,25 @@
     python3 22_build_sgml_interaction.py
     ```
     10-20秒くらいで終了します。成功すると、`sgml_interaction`テーブルが作成されます。
+
+10. **16章「薬物動態」のLLM抽出（試験段階）**
+    - 先に16章を節・文字チャンク単位で `temp_sgml_pk_blocks` へ抽出します。
+      ```bash
+      python3 23_extract_sgml_pharmacokinetics.py
+      ```
+    - 次にOllamaで代謝酵素、阻害・誘導、トランスポーター、代謝物、排泄概要を抽出します。
+      ```bash
+      python3 24_build_sgml_pharmacokinetics.py
+      ```
+    - LLM処理履歴と検証前ファクトは `temp_` で始まるテーブルに保存されます。OQSDrugが利用する `ai_` テーブルは使用しません。
+    - 配布対象の最終出力は `sgml_pharmacokinetics` です。全チャンクの処理に成功するまで、この最終テーブルは更新されません。
+    - 各LLMリクエスト後のGPU冷却待機は `config.json` の `gpu_cooling_wait` で指定します。一時的に変更する場合は次のように指定できます。
+      ```bash
+      python3 24_build_sgml_pharmacokinetics.py --wait-seconds 30
+      ```
+    - 最初は1添付文書だけで確認することを推奨します。
+      ```bash
+      python3 23_extract_sgml_pharmacokinetics.py --package-insert-no 6149003F2020_3_05
+      python3 24_build_sgml_pharmacokinetics.py --package-insert-no 6149003F2020_3_05 --model gpt-oss:20b --prompt-version pk-feature-v2 --no-publish
+      ```
+    - 中断後は同じコマンドを再実行できます。成功済みの同一文章はハッシュキャッシュから再利用され、LLMには再送信されません。
