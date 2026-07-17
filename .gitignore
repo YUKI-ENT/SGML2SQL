@@ -1,5 +1,6 @@
 SGML/*
 !SGML/.gitkeep
+config.json
 #dump_sgml.sh
 backup/*
 !backup/.gitkeep
