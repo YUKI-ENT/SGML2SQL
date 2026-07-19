@@ -324,6 +324,9 @@ def call_ollama(url: str, model: str, prompt: str, timeout: int) -> Tuple[str, d
         "prompt": prompt,
         "stream": False,
         "format": "json",
+        # qwen3.5 などの思考モデルでは、未指定だとJSON本体が thinking に入り
+        # response が空になることがある。構造化抽出では通常応答へ直接出力させる。
+        "think": False,
         "options": {"temperature": 0},
     }
     request = urllib.request.Request(
@@ -335,10 +338,14 @@ def call_ollama(url: str, model: str, prompt: str, timeout: int) -> Tuple[str, d
     with urllib.request.urlopen(request, timeout=timeout) as response:
         outer = json.loads(response.read().decode("utf-8"))
     generated = outer.get("response")
-    if generated is None and isinstance(outer.get("message"), dict):
+    if not generated and isinstance(outer.get("message"), dict):
         generated = outer["message"].get("content")
-    if not isinstance(generated, str):
-        raise ValueError("Ollama応答に response または message.content がありません")
+    # Ollamaやモデルのバージョン差への防御。think=false が無視された場合も
+    # JSONを失わないよう、response が空なら thinking を確認する。
+    if not generated and isinstance(outer.get("thinking"), str):
+        generated = outer["thinking"]
+    if not isinstance(generated, str) or not generated.strip():
+        raise ValueError("Ollama応答の response、message.content、thinking が空です")
     return generated, outer
 
 
