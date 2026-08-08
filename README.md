@@ -85,4 +85,31 @@
       python3 23_extract_sgml_pharmacokinetics.py --package-insert-no 6149003F2020_3_05
       python3 24_build_sgml_pharmacokinetics.py --package-insert-no 6149003F2020_3_05 --model gpt-oss:20b --prompt-version pk-feature-v2 --no-publish
       ```
+
+11. **汎用 `sgml_note` パイプライン（仮実装）**
+    - `sgml_rawdata` 作成後、添付文書を意味ブロックへ差分展開します。XML全体が変更されても、意味ブロックのハッシュが同じならLLM処理は再実行されません。
+      ```bash
+      python3 41_build_sgml_note_blocks.py
+      ```
+    - `sgml_note_definitions.json` のテーマ定義を使い、キーワードでLLM投入候補を絞ります。
+      ```bash
+      python3 42_build_sgml_note_candidates.py
+      ```
+    - 候補をOllamaで抽出します。成功結果は入力ハッシュ、定義版、プロンプト版、モデル名でキャッシュされます。
+      ```bash
+      python3 43_extract_sgml_notes.py
+      ```
+    - 原文一致等の検証に成功したファクトだけを `sgml_note` へ公開します。最初は `--dry-run` を推奨します。
+      ```bash
+      python3 44_publish_sgml_notes.py --dry-run
+      python3 44_publish_sgml_notes.py
+      ```
+    - 初回確認は1添付文書に限定できます。
+      ```bash
+      python3 41_build_sgml_note_blocks.py --package-insert-no 6149003F2020_3_05
+      python3 42_build_sgml_note_candidates.py --package-insert-no 6149003F2020_3_05
+      python3 43_extract_sgml_notes.py --package-insert-no 6149003F2020_3_05 --limit 5
+      python3 44_publish_sgml_notes.py --package-insert-no 6149003F2020_3_05 --dry-run
+      ```
+    - 抽出対象を増やす場合は `sgml_note_definitions.json` に `note_type`、候補語、許可する関係、テーマ固有指示を追加します。
     - 中断後は同じコマンドを再実行できます。成功済みの同一文章はハッシュキャッシュから再利用され、LLMには再送信されません。
