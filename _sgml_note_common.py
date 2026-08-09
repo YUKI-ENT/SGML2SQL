@@ -75,19 +75,68 @@ def stable_json_hash(value: Any) -> str:
     return sha256_text(encoded)
 
 
+def remove_json_trailing_commas(text: str) -> str:
+    """JSON文字列の外側にある、配列・オブジェクト末尾のカンマだけを除去する。"""
+    result: List[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            result.append(char)
+            index += 1
+            continue
+        if char == ",":
+            following = index + 1
+            while following < len(text) and text[following].isspace():
+                following += 1
+            if following < len(text) and text[following] in "}]":
+                index += 1
+                continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
 def json_from_model_text(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text)
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start < 0 or end <= start:
-            raise
-        value = json.loads(text[start : end + 1])
+    candidates = [text]
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start and (start != 0 or end != len(text) - 1):
+        candidates.append(text[start : end + 1])
+    parse_error: Optional[json.JSONDecodeError] = None
+    value: Any = None
+    parsed = False
+    for candidate in candidates:
+        for prepared in (candidate, remove_json_trailing_commas(candidate)):
+            try:
+                value = json.loads(prepared)
+                parsed = True
+                break
+            except json.JSONDecodeError as exc:
+                parse_error = exc
+        if parsed:
+            break
+    if not parsed:
+        if parse_error is not None:
+            raise parse_error
+        raise ValueError("LLM応答にJSONオブジェクトがありません")
     if not isinstance(value, dict):
         raise ValueError("LLM応答のルートがJSONオブジェクトではありません")
     return value
@@ -290,6 +339,9 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
                 f"上限{max_note_percentages}件を超えています"
             )
         exact_evidence = exact_or_whitespace_only_span(block_text, evidence) if evidence else None
+        # 関係分類は、後段で文・ブロックへ拡張する前のLLM引用そのものと照合する。
+        # 同じブロック内の別ファクトの語で誤分類が通ることを防ぐ。
+        relation_evidence = exact_evidence or ""
         if not exact_evidence:
             field_errors.append("evidence_textが入力原文の連続部分と一致しません")
         if not isinstance(details, dict):
@@ -317,6 +369,18 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
                 for term in term_group
             ):
                 field_errors.append(f"evidence_textが必須語群{group_index + 1}を満たしません")
+        relation_required_groups = definition.get("relation_required_evidence_term_groups", {}).get(
+            relation, []
+        )
+        for group_index, term_group in enumerate(relation_required_groups):
+            if not any(
+                normalize_text(str(term)).casefold() in normalize_text(relation_evidence).casefold()
+                for term in term_group
+            ):
+                field_errors.append(
+                    f"relation_type={relation}のevidence_textが関係別必須語群"
+                    f"{group_index + 1}を満たしません"
+                )
         if field_errors:
             errors.append(f"{prefix}: " + "; ".join(field_errors))
             continue

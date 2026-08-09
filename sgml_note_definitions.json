@@ -49,6 +49,10 @@
       "preferred_sections": ["1", "2", "8", "9", "11", "15", "17", "18"],
       "candidate_terms": ["QT", "QTc", "ＱＴ", "torsade", "TdP", "トルサード"],
       "required_evidence_term_groups": [["QT", "QTc", "ＱＴ", "torsade", "TdP", "トルサード"]],
+      "relation_required_evidence_term_groups": {
+        "QT_PROLONGATION": [["QT", "QTc", "ＱＴ"]],
+        "TORSADES_DE_POINTES": [["torsade", "TdP", "トルサード"]]
+      },
       "allowed_relations": ["QT_PROLONGATION", "TORSADES_DE_POINTES"],
       "relation_targets": {
         "QT_PROLONGATION": {"target_code": "QT", "target_name": "QT/QTc延長"},

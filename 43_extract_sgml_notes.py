@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import time
@@ -235,6 +236,23 @@ def main() -> None:
                     status = "success"
                     error_message = None
                     break
+                except json.JSONDecodeError as exc:
+                    response_at = datetime.now(timezone.utc)
+                    status = "error"
+                    error_message = f"{type(exc).__name__}: {exc}"
+                    log.warning("LLM処理失敗 hash=%s: %s", analysis_hash[:12], error_message)
+                    if attempt <= max_retries:
+                        prompt = (
+                            base_prompt
+                            + "\n\n【前回応答のJSON構文修正指示】\n"
+                            + f"前回応答はJSONとして解析できません: {exc}\n"
+                            + "キーと文字列はダブルクォートで囲み、配列・オブジェクトの"
+                            + "最後の要素にはカンマを付けないでください。内容を追加せず、"
+                            + "同じ事実を有効なJSONだけで返してください。\n"
+                            + "【前回応答】\n"
+                            + (raw_response or "")
+                        )
+                        continue
                 except Exception as exc:
                     response_at = datetime.now(timezone.utc)
                     status = "error"
