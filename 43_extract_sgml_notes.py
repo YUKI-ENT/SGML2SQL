@@ -134,7 +134,7 @@ def main() -> None:
     model = args.model or config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
     url = config.get("note_ollama_url", config.get("ollama_url", "http://localhost:11434/api/generate"))
     timeout = int(config.get("note_ollama_timeout", config.get("pk_ollama_timeout", 600)))
-    prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v2")
+    prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
     wait_seconds = args.wait_seconds if args.wait_seconds is not None else float(config.get("note_llm_wait", 0))
     max_retries = args.max_retries if args.max_retries is not None else int(config.get("note_llm_max_retries", 2))
     if args.limit is not None and args.limit <= 0:

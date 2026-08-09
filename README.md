@@ -112,4 +112,12 @@
       python3 44_publish_sgml_notes.py --package-insert-no 6149003F2020_3_05 --dry-run
       ```
     - 抽出対象を増やす場合は `sgml_note_definitions.json` に `note_type`、候補語、許可する関係、テーマ固有指示を追加します。
+    - 相互作用章は既存の `sgml_interaction` を正本とし、既定のノートブロック対象から除外しています。
+    - 複数成分・複数経路をまとめた排泄割合は1件の合計値として扱います。同じ根拠文中に1回だけ現れる割合を複数ファクトへ複製した応答は自動検証で拒否します。
     - 中断後は同じコマンドを再実行できます。成功済みの同一文章はハッシュキャッシュから再利用され、LLMには再送信されません。
+    - 41～43の結果を完全初期化する場合は、最初に対象件数を確認してから実行します。
+      ```bash
+      python3 45_reset_sgml_notes.py
+      python3 45_reset_sgml_notes.py --execute
+      ```
+      44で公開した `sgml_note` も含める場合は `--include-published --execute` を指定します。

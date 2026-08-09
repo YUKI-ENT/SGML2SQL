@@ -3,36 +3,42 @@
   "definitions": [
     {
       "note_type": "METABOLISM_TRANSPORT",
-      "definition_version": "metabolism-v2",
+      "definition_version": "metabolism-v4",
       "description": "本剤の代謝酵素、基質性、酵素阻害・誘導及びトランスポーターに関する明示情報",
       "allowed_top_sections": ["Pharmacokinetics"],
-      "preferred_sections": ["16.4", "16.7", "10"],
-      "candidate_terms": ["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE"],
-      "required_evidence_term_groups": [["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE"]],
-      "allowed_relations": ["METABOLIZED_BY", "SUBSTRATE_OF", "INHIBITS", "INDUCES", "NOT_METABOLIZED_BY", "NOT_SUBSTRATE_OF", "NOT_INHIBITS", "NOT_INDUCES", "EXPOSURE_INCREASED_BY_INHIBITION", "EXPOSURE_DECREASED_BY_INDUCTION"],
-      "instructions": "『本剤が酵素を阻害する』と『本剤の代謝が阻害される』を区別してください。併用薬だけの性質は抽出しないでください。特定酵素が明示されない場合は無理に推定しないでください。"
+      "allowed_sections": ["16", "16.4", "16.6", "16.7"],
+      "preferred_sections": ["16.4", "16.7"],
+      "candidate_terms": ["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE", "肝臓で代謝", "肝で代謝", "グルクロン酸抱合", "硫酸抱合", "肝血流"],
+      "required_evidence_term_groups": [["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE", "肝臓で代謝", "肝で代謝", "グルクロン酸抱合", "硫酸抱合", "肝血流"]],
+      "allowed_relations": ["METABOLIZED_BY", "METABOLISM_PATHWAY", "HEPATIC_METABOLISM", "CLEARANCE_DEPENDS_ON_HEPATIC_BLOOD_FLOW", "SUBSTRATE_OF", "INHIBITS", "INDUCES", "NOT_METABOLIZED_BY", "NOT_SUBSTRATE_OF", "NOT_INHIBITS", "NOT_INDUCES", "EXPOSURE_INCREASED_BY_INHIBITION", "EXPOSURE_DECREASED_BY_INDUCTION"],
+      "max_facts_per_evidence": 1,
+      "instructions": "『本剤が酵素を阻害する』と『本剤の代謝が阻害される』を区別してください。併用薬だけの性質は抽出しないでください。特定酵素が明示されない場合は推定せず、肝臓で代謝される記載はHEPATIC_METABOLISM、抱合などの経路はMETABOLISM_PATHWAY、クリアランスが肝血流量に依存する記載はCLEARANCE_DEPENDS_ON_HEPATIC_BLOOD_FLOWとしてください。代謝物と割合の列挙は各代謝物へ細分化せず、経路を1件の要約にしてください。"
     },
     {
       "note_type": "EXCRETION_ELIMINATION",
-      "definition_version": "excretion-v2",
+      "definition_version": "excretion-v3",
       "description": "尿、糞、胆汁への排泄、腎クリアランス、透析除去性など本剤の消失経路",
       "allowed_top_sections": ["Pharmacokinetics", "OverDosage"],
+      "excluded_sections": ["16.4"],
       "preferred_sections": ["16.5", "16.6", "13"],
       "candidate_terms": ["排泄", "尿中", "糞中", "胆汁", "未変化体", "腎クリアランス", "腎を介", "透析", "血液浄化", "除去され"],
       "required_evidence_term_groups": [["排泄", "尿中", "糞中", "胆汁", "未変化体", "腎クリアランス", "透析", "血液浄化", "除去され"]],
       "allowed_relations": ["URINARY_EXCRETION", "URINARY_RECOVERY", "FECAL_RECOVERY", "BILIARY_EXCRETION", "RENAL_CLEARANCE", "DIALYZABLE", "NOT_DIALYZABLE", "OTHER_ELIMINATION"],
-      "instructions": "尿中回収、尿中未変化体排泄、糞中回収、胆汁排泄を区別してください。糞中回収だけから胆汁排泄と推定しないでください。割合は対象物質と時間範囲が明示される場合だけdetailsへ記録してください。"
+      "max_facts_per_evidence": 2,
+      "reject_duplicated_aggregate_percent": true,
+      "instructions": "尿中回収、尿中未変化体排泄、糞中回収、胆汁排泄を区別してください。糞中回収だけから胆汁排泄と推定しないでください。割合は対象物質と時間範囲が明示される場合だけdetailsへ記録してください。『A及びBとしてX%』はAとBを合わせた1件、『尿中並びに糞中にX%』は両経路を合わせたOTHER_ELIMINATION 1件とし、X%を各対象へ複製しないでください。代謝物の個別割合が多数列挙される場合は、個々に分割せず1件の簡潔な要約にしてください。"
     },
     {
       "note_type": "ORGAN_IMPAIRMENT",
-      "definition_version": "organ-impairment-v2",
+      "definition_version": "organ-impairment-v3",
       "description": "腎機能又は肝機能低下時の本剤曝露量、半減期、クリアランスの変化",
-      "allowed_top_sections": ["Pharmacokinetics"],
+      "allowed_top_sections": ["Pharmacokinetics", "UseInSpecificPopulations"],
       "preferred_sections": ["16.6", "9.2", "9.3"],
       "candidate_terms": ["腎機能", "肝機能", "腎障害", "肝障害", "腎不全", "肝不全", "クレアチニンクリアランス", "Child-Pugh", "透析患者"],
-      "required_evidence_term_groups": [["腎機能", "肝機能", "腎障害", "肝障害", "腎不全", "肝不全", "Child-Pugh"], ["増加", "上昇", "低下", "減少", "延長", "短縮", "差は認め", "影響"]],
-      "allowed_relations": ["EXPOSURE_INCREASES_WITH_RENAL_IMPAIRMENT", "EXPOSURE_DECREASES_WITH_RENAL_IMPAIRMENT", "EXPOSURE_INCREASES_WITH_HEPATIC_IMPAIRMENT", "EXPOSURE_DECREASES_WITH_HEPATIC_IMPAIRMENT", "HALF_LIFE_CHANGES_WITH_IMPAIRMENT", "CLEARANCE_CHANGES_WITH_IMPAIRMENT", "NO_MEANINGFUL_PK_CHANGE"],
-      "instructions": "腎機能障害と肝機能障害を区別してください。AUC、Cmax、半減期又はクリアランスの方向が明示されない場合は推定しないでください。数値表の各行を再構成せず、表の前後にある結論文だけを抽出してください。"
+      "candidate_required_term_groups": [["腎機能", "肝機能", "腎障害", "肝障害", "腎不全", "肝不全", "Child-Pugh"], ["増加", "上昇", "低下", "減少", "延長", "短縮", "遅延", "増強", "差は認め", "影響", "蛋白結合"]],
+      "required_evidence_term_groups": [["腎機能", "肝機能", "腎障害", "肝障害", "腎不全", "肝不全", "Child-Pugh"], ["増加", "上昇", "低下", "減少", "延長", "短縮", "遅延", "増強", "差は認め", "影響", "蛋白結合"]],
+      "allowed_relations": ["EXPOSURE_INCREASES_WITH_RENAL_IMPAIRMENT", "EXPOSURE_DECREASES_WITH_RENAL_IMPAIRMENT", "EXPOSURE_INCREASES_WITH_HEPATIC_IMPAIRMENT", "EXPOSURE_DECREASES_WITH_HEPATIC_IMPAIRMENT", "HALF_LIFE_CHANGES_WITH_IMPAIRMENT", "CLEARANCE_CHANGES_WITH_IMPAIRMENT", "ELIMINATION_DELAYED_WITH_RENAL_IMPAIRMENT", "METABOLISM_DELAYED_WITH_HEPATIC_IMPAIRMENT", "PROTEIN_BINDING_DECREASES_WITH_HEPATIC_IMPAIRMENT", "NO_MEANINGFUL_PK_CHANGE"],
+      "instructions": "腎機能障害と肝機能障害を区別してください。AUC、Cmax、半減期又はクリアランスの方向が明示されない場合は推定しないでください。ただし9章に排泄遅延、代謝遅延又は蛋白結合低下が明記されている場合は、それぞれ対応するrelation_typeで抽出してください。単なる慎重投与や用量調節指示だけなら抽出しないでください。数値表の各行を再構成せず、表の前後にある結論文だけを抽出してください。"
     },
     {
       "note_type": "QT_EFFECT",
@@ -40,7 +46,7 @@
       "description": "本剤のQT/QTc延長及びtorsade de pointesに関する明示情報",
       "allowed_top_sections": ["Warnings", "ContraIndications", "ImportantPrecautions", "UseInSpecificPopulations", "AdverseEvents", "OtherPrecautions", "Pharmacokinetics", "ResultsOfClinicalTrials", "EfficacyPharmacology"],
       "allowed_block_types": ["Item", "Detail"],
-      "preferred_sections": ["1", "2", "8", "9", "10", "11", "15", "17", "18"],
+      "preferred_sections": ["1", "2", "8", "9", "11", "15", "17", "18"],
       "candidate_terms": ["QT", "QTc", "ＱＴ", "torsade", "TdP", "トルサード"],
       "required_evidence_term_groups": [["QT", "QTc", "ＱＴ", "torsade", "TdP", "トルサード"]],
       "allowed_relations": ["QT_PROLONGATION", "TORSADES_DE_POINTES"],
@@ -49,7 +55,7 @@
         "TORSADES_DE_POINTES": {"target_code": "TdP", "target_name": "torsade de pointes"}
       },
       "consolidate_by_relation": true,
-      "section_priority": ["11", "9", "8", "10", "15", "17", "18"],
+      "section_priority": ["11", "9", "8", "15", "17", "18"],
       "instructions": "QT又はQTc延長に関する記載はQT_PROLONGATION、torsade de pointes又はトルサード・ド・ポアントに関する記載はTORSADES_DE_POINTESとして抽出してください。観察、リスク、副作用、注意喚起の細分類は行いません。併用薬だけがQT延長を起こす記載は対象薬の事実として抽出しないでください。単にQT延長等の既往又は基礎疾患がある患者への注意を述べるだけの記載は抽出しないでください。"
     }
   ]

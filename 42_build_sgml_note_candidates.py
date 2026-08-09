@@ -156,8 +156,14 @@ def main() -> None:
                 allowed_top_sections = set(definition.get("allowed_top_sections", []))
                 if allowed_top_sections and block["top_section_type"] not in allowed_top_sections:
                     continue
+                allowed_sections = set(definition.get("allowed_sections", []))
+                if allowed_sections and block["section_code"] not in allowed_sections:
+                    continue
                 allowed_block_types = set(definition.get("allowed_block_types", []))
                 if allowed_block_types and block["block_type"] not in allowed_block_types:
+                    continue
+                excluded_sections = set(definition.get("excluded_sections", []))
+                if block["section_code"] in excluded_sections:
                     continue
                 matched = sorted(
                     {
@@ -167,6 +173,12 @@ def main() -> None:
                     }
                 )
                 if not matched:
+                    continue
+                candidate_required_groups = definition.get("candidate_required_term_groups", [])
+                if candidate_required_groups and not all(
+                    any(normalize_text(str(term)).casefold() in normalized for term in term_group)
+                    for term_group in candidate_required_groups
+                ):
                     continue
                 reasons = ["keyword"]
                 if block["section_code"] in set(definition.get("preferred_sections", [])):

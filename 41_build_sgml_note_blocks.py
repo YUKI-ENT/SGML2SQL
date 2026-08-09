@@ -96,7 +96,6 @@ DEFAULT_INCLUDED_TOP_LEVEL = {
     "ContraIndications",
     "ImportantPrecautions",
     "UseInSpecificPopulations",
-    "Interactions",
     "AdverseEvents",
     "InfluenceOnLaboratoryValues",
     "OverDosage",
@@ -283,7 +282,7 @@ def create_tables(conn, state_table: str, block_table: str) -> None:
       generic_name_ja        text,
       raw_xml_hash           text NOT NULL,
       semantic_manifest_hash text NOT NULL,
-      extractor_version      text NOT NULL DEFAULT 'sgml-block-v6',
+      extractor_version      text NOT NULL DEFAULT 'sgml-block-v7',
       block_count            integer NOT NULL,
       processing_status      text NOT NULL,
       error_message          text,
@@ -308,7 +307,7 @@ def create_tables(conn, state_table: str, block_table: str) -> None:
       block_text            text NOT NULL,
       block_xml             xml,
       content_hash          text NOT NULL,
-      extractor_version     text NOT NULL DEFAULT 'sgml-block-v6',
+      extractor_version     text NOT NULL DEFAULT 'sgml-block-v7',
       is_current            boolean NOT NULL DEFAULT true,
       first_seen_at         timestamptz NOT NULL DEFAULT now(),
       last_seen_at          timestamptz NOT NULL DEFAULT now(),
@@ -320,9 +319,9 @@ def create_tables(conn, state_table: str, block_table: str) -> None:
     CREATE INDEX IF NOT EXISTS idx_{block_base}_current_section
       ON {block_table} (is_current, section_code, section_type);
     ALTER TABLE {state_table}
-      ADD COLUMN IF NOT EXISTS extractor_version text NOT NULL DEFAULT 'sgml-block-v6';
+      ADD COLUMN IF NOT EXISTS extractor_version text NOT NULL DEFAULT 'sgml-block-v7';
     ALTER TABLE {block_table}
-      ADD COLUMN IF NOT EXISTS extractor_version text NOT NULL DEFAULT 'sgml-block-v6';
+      ADD COLUMN IF NOT EXISTS extractor_version text NOT NULL DEFAULT 'sgml-block-v7';
     """
     with conn.cursor() as cur:
         cur.execute(sql)
@@ -344,7 +343,7 @@ def main() -> None:
         "sgml_note_block_table",
     )
     max_length = args.max_block_length or int(config.get("note_max_block_length", 3000))
-    extractor_version = str(config.get("note_block_extractor_version", "sgml-block-v6"))
+    extractor_version = str(config.get("note_block_extractor_version", "sgml-block-v7"))
     configured_sections = config.get("note_included_top_sections")
     if configured_sections is None:
         included_top_sections = set(DEFAULT_INCLUDED_TOP_LEVEL)

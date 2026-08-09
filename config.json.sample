@@ -23,14 +23,14 @@
   "note_ollama_url": "http://localhost:11434/api/generate",
   "note_ollama_model": "gpt-oss:20b",
   "note_ollama_timeout": 600,
-  "note_prompt_version": "sgml-note-v2",
+  "note_prompt_version": "sgml-note-v4",
   "note_llm_wait": 0,
   "note_llm_max_retries": 2,
   "note_max_block_length": 3000,
-  "note_block_extractor_version": "sgml-block-v6",
+  "note_block_extractor_version": "sgml-block-v7",
   "note_included_top_sections": [
     "Warnings", "ContraIndications", "ImportantPrecautions",
-    "UseInSpecificPopulations", "Interactions", "AdverseEvents",
+    "UseInSpecificPopulations", "AdverseEvents",
     "InfluenceOnLaboratoryValues", "OverDosage", "OtherPrecautions",
     "Pharmacokinetics", "ResultsOfClinicalTrials", "EfficacyPharmacology"
   ],

@@ -113,7 +113,7 @@ def main() -> None:
     fact_table = checked_table_name(config.get("temp_sgml_note_fact_table", "public.temp_sgml_note_fact"), "temp_sgml_note_fact_table")
     note_table = checked_table_name(config.get("sgml_note_table", "public.sgml_note"), "sgml_note_table")
     model = args.model or config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
-    prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v2")
+    prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
 
     conn = psycopg2.connect(**config["db"])
     create_table(conn, note_table)

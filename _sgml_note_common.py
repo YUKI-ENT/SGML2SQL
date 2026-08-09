@@ -206,6 +206,9 @@ def build_prompt(definition: dict, block: dict) -> str:
 note_text は根拠文の意味を狭めず、簡潔な日本語にしてください。
 evidence_text は入力本文から改変しない連続した原文を引用してください。
 1件に複数の主張を混ぜず、原子的な事実に分けてください。
+ただし、「A及びBとしてX%」「尿中及び糞中に合計X%」のように、1つの数値が複数の成分・経路をまとめた合計値である場合は分割しないでください。
+合計値を各成分又は各経路の個別値として複製してはいけません。合計対象をtarget_name又はnote_textにまとめ、1件の事実として抽出してください。
+「それぞれ」と明記されていない限り、共有された1つの割合を列挙対象の各々に割り当てないでください。
 
 【抽出テーマ】
 {definition['note_type']}: {definition.get('description', '')}
@@ -275,6 +278,17 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
             field_errors.append("certaintyがEXPLICITではありません")
         if not note_text:
             field_errors.append("note_textが空です")
+        max_note_percentages = definition.get("max_note_percentages")
+        note_percentages = re.findall(r"\d+(?:\.\d+)?\s*[％%]", note_text)
+        if (
+            isinstance(max_note_percentages, int)
+            and max_note_percentages >= 0
+            and len(note_percentages) > max_note_percentages
+        ):
+            field_errors.append(
+                f"note_textの割合列挙が{len(note_percentages)}件あり、"
+                f"上限{max_note_percentages}件を超えています"
+            )
         exact_evidence = exact_or_whitespace_only_span(block_text, evidence) if evidence else None
         if not exact_evidence:
             field_errors.append("evidence_textが入力原文の連続部分と一致しません")
@@ -284,11 +298,19 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
         required_groups = definition.get("required_evidence_term_groups", [])
         if exact_evidence and required_groups:
             expanded = enclosing_sentence(block_text, exact_evidence)
-            if all(
+            expanded_satisfies = all(
                 any(normalize_text(str(term)).casefold() in normalize_text(expanded).casefold() for term in term_group)
                 for term_group in required_groups
-            ):
+            )
+            block_satisfies = all(
+                any(normalize_text(str(term)).casefold() in normalize_text(block_text).casefold() for term in term_group)
+                for term_group in required_groups
+            )
+            if expanded_satisfies:
                 exact_evidence = expanded
+            elif block_satisfies and len(block_text) <= 1000:
+                # Item見出しに患者群、本文にPK変化が分かれている場合は両方を根拠に含める。
+                exact_evidence = block_text
         for group_index, term_group in enumerate(required_groups):
             if not any(
                 normalize_text(str(term)).casefold() in normalize_text(exact_evidence or "").casefold()
@@ -316,6 +338,38 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
         }
         fact["fact_hash"] = stable_json_hash(fact)
         valid.append(fact)
+
+    # 1つの合計割合を列挙された成分・排泄経路へ複製する誤りを防ぐ。
+    # 「それぞれ」が明記された文は個別値である可能性が高いため対象外とする。
+    facts_by_evidence: Dict[str, List[dict]] = {}
+    for fact in valid:
+        facts_by_evidence.setdefault(fact["evidence_text"], []).append(fact)
+    max_per_evidence = definition.get("max_facts_per_evidence")
+    for evidence, evidence_facts in facts_by_evidence.items():
+        if isinstance(max_per_evidence, int) and max_per_evidence > 0 and len(evidence_facts) > max_per_evidence:
+            errors.append(
+                f"同一evidence_textから{len(evidence_facts)}件が抽出されました。"
+                f"上限{max_per_evidence}件を超えるため、列挙を要約してください"
+            )
+        if not definition.get("reject_duplicated_aggregate_percent") or "それぞれ" in evidence:
+            continue
+        percentage_to_facts: Dict[str, List[dict]] = {}
+        for fact in evidence_facts:
+            percentages = {
+                match.group(1).replace("％", "%").replace(" ", "")
+                for match in re.finditer(r"(\d+(?:\.\d+)?\s*[％%])", fact["note_text"])
+            }
+            for percentage in percentages:
+                percentage_to_facts.setdefault(percentage, []).append(fact)
+        normalized_evidence = normalize_text(evidence).replace("％", "%").replace(" ", "")
+        for percentage, duplicated_facts in percentage_to_facts.items():
+            if len(duplicated_facts) < 2:
+                continue
+            if normalized_evidence.count(percentage) == 1:
+                errors.append(
+                    f"同一evidence_text中に1回だけ現れる割合{percentage}が"
+                    f"{len(duplicated_facts)}件へ複製されています。合計値として1件にまとめてください"
+                )
     return valid, errors
 
 
