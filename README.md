@@ -121,6 +121,14 @@
       python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --run-status review
       python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --run-status error
       ```
+    - あるモデルでreview/errorになった候補だけを別モデルで救済できます。`--run-status new`を併用すると、cloud側で既に実行済みの候補も再送しません。
+      ```bash
+      python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:31b-cloud --run-status new --source-model gemma4:12b --source-status review error
+      ```
+      公開時は主モデルを優先し、主モデルにsuccessがない候補だけcloudのsuccessで補完できます。
+      ```bash
+      python3 44_publish_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
+      ```
     - 41～43の結果を完全初期化する場合は、最初に対象件数を確認してから実行します。
       ```bash
       python3 45_reset_sgml_notes.py

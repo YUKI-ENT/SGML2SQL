@@ -64,6 +64,16 @@ def parse_args() -> argparse.Namespace:
             "review=要確認のみ、error=エラーのみ"
         ),
     )
+    parser.add_argument(
+        "--source-model",
+        help="このモデルの実行結果statusを使って処理候補を絞る",
+    )
+    parser.add_argument(
+        "--source-status",
+        nargs="+",
+        choices=["success", "review", "error"],
+        help="--source-modelで選ぶstatus（例: --source-status review error）",
+    )
     parser.add_argument("--force", action="store_true", help="成功済みキャッシュも再実行")
     return parser.parse_args()
 
@@ -166,6 +176,10 @@ def main() -> None:
         raise ValueError("wait-seconds と max-retries は0以上にしてください")
     if args.force and args.run_status != "incomplete":
         raise ValueError("--force と --run-status new/review/error は同時に指定できません")
+    if args.source_status and not args.source_model:
+        raise ValueError("--source-statusを使う場合は--source-modelも指定してください")
+    if args.source_model == model:
+        raise ValueError("--source-modelは処理対象--modelと異なるモデルを指定してください")
 
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, run_table, fact_table)
@@ -203,6 +217,31 @@ def main() -> None:
                 f"{candidate['definition_version']}\n{prompt_version}"
             )
         analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
+        if args.source_model:
+            selected_source_statuses = set(args.source_status or ["review", "error"])
+            source_statuses: dict[str, str] = {}
+            if analysis_hashes:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT analysis_hash, status FROM {run_table} "
+                        "WHERE model_name=%s AND analysis_hash=ANY(%s)",
+                        (args.source_model, analysis_hashes),
+                    )
+                    source_statuses = {
+                        analysis_hash: status for analysis_hash, status in cur.fetchall()
+                    }
+            candidates = [
+                candidate
+                for candidate in candidates
+                if source_statuses.get(candidate["analysis_hash"]) in selected_source_statuses
+            ]
+            analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
+            log.info(
+                "元モデル絞込 source_model=%s source_status=%s matched=%s",
+                args.source_model,
+                ",".join(sorted(selected_source_statuses)),
+                len(analysis_hashes),
+            )
         cached_statuses: dict[str, str] = {}
         if analysis_hashes:
             with conn.cursor() as cur:

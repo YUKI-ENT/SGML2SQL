@@ -42,6 +42,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--package-insert-no", help="指定添付文書だけを公開")
     parser.add_argument("--note-type", help="指定テーマだけを公開")
     parser.add_argument("--model", help="公開対象Ollamaモデルを一時的に上書き")
+    parser.add_argument(
+        "--fallback-model",
+        action="append",
+        default=[],
+        help="主モデルにsuccessがない候補を補完するモデル。複数回指定可",
+    )
     parser.add_argument("--prompt-version", help="公開対象プロンプト版を一時的に上書き")
     parser.add_argument("--dry-run", action="store_true", help="公開件数だけ表示して更新しない")
     parser.add_argument(
@@ -113,6 +119,7 @@ def main() -> None:
     fact_table = checked_table_name(config.get("temp_sgml_note_fact_table", "public.temp_sgml_note_fact"), "temp_sgml_note_fact_table")
     note_table = checked_table_name(config.get("sgml_note_table", "public.sgml_note"), "sgml_note_table")
     model = args.model or config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
+    models = list(dict.fromkeys([model, *args.fallback_model]))
     prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
 
     conn = psycopg2.connect(**config["db"])
@@ -122,13 +129,10 @@ def main() -> None:
     where = [
         "c.is_current",
         "b.is_current",
-        "r.status='success'",
-        "r.prompt_version=%s",
-        "r.model_name=%s",
         "f.validation_status='AUTO_VALIDATED'",
         "c.note_type = ANY(%s)",
     ]
-    params: List[object] = [prompt_version, model, note_types]
+    params: List[object] = [prompt_version, models, models, note_types]
     if args.package_insert_no:
         where.append("c.package_insert_no=%s")
         params.append(args.package_insert_no)
@@ -142,17 +146,25 @@ def main() -> None:
              f.fact_hash
         FROM {candidate_table} c
         JOIN {block_table} b ON b.block_id=c.block_id
-        JOIN {run_table} r
-          ON r.content_hash=c.content_hash
-         AND r.note_type=c.note_type
-         AND r.definition_version=c.definition_version
+        JOIN LATERAL (
+          SELECT selected_run.*
+            FROM {run_table} selected_run
+           WHERE selected_run.content_hash=c.content_hash
+             AND selected_run.note_type=c.note_type
+             AND selected_run.definition_version=c.definition_version
+             AND selected_run.prompt_version=%s
+             AND selected_run.model_name=ANY(%s)
+             AND selected_run.status='success'
+           ORDER BY array_position(%s::text[], selected_run.model_name)
+           LIMIT 1
+        ) r ON true
         JOIN {fact_table} f ON f.run_id=r.run_id
        WHERE {' AND '.join(where)}
        ORDER BY c.package_insert_no, c.note_type, f.fact_hash, b.block_id
     """
     try:
         coverage_where = ["c.is_current", "b.is_current", "c.note_type = ANY(%s)"]
-        coverage_params: List[object] = [prompt_version, model, note_types]
+        coverage_params: List[object] = [prompt_version, models, note_types]
         if args.package_insert_no:
             coverage_where.append("c.package_insert_no=%s")
             coverage_params.append(args.package_insert_no)
@@ -160,15 +172,18 @@ def main() -> None:
             cur.execute(
                 f"""SELECT c.package_insert_no, c.note_type, c.definition_version,
                             count(*) AS candidates,
-                            count(r.run_id) FILTER (WHERE r.status='success') AS succeeded
+                            count(*) FILTER (WHERE EXISTS (
+                              SELECT 1
+                                FROM {run_table} successful_run
+                               WHERE successful_run.content_hash=c.content_hash
+                                 AND successful_run.note_type=c.note_type
+                                 AND successful_run.definition_version=c.definition_version
+                                 AND successful_run.prompt_version=%s
+                                 AND successful_run.model_name=ANY(%s)
+                                 AND successful_run.status='success'
+                            )) AS succeeded
                        FROM {candidate_table} c
                        JOIN {block_table} b ON b.block_id=c.block_id
-                       LEFT JOIN {run_table} r
-                         ON r.content_hash=c.content_hash
-                        AND r.note_type=c.note_type
-                        AND r.definition_version=c.definition_version
-                        AND r.prompt_version=%s
-                        AND r.model_name=%s
                       WHERE {' AND '.join(coverage_where)}
                       GROUP BY c.package_insert_no, c.note_type, c.definition_version""",
                 coverage_params,
@@ -193,7 +208,8 @@ def main() -> None:
             raw_rows = cur.fetchall()
         rows: Dict[Tuple[object, ...], dict] = {}
 
-        def publication_quality(row: dict, definition: dict) -> Tuple[int, int, int]:
+        def publication_quality(row: dict, definition: dict) -> Tuple[int, int, int, int]:
+            model_score = len(models) - models.index(row["model_name"])
             priorities = definition.get("section_priority", [])
             try:
                 section_score = len(priorities) - priorities.index(row["section_code"])
@@ -201,7 +217,7 @@ def main() -> None:
                 section_score = 0
             evidence = row["evidence_text"] or ""
             sentence_score = sum(marker in evidence for marker in ("。", "、", "ことがある", "認められ"))
-            return section_score, sentence_score, len(evidence)
+            return model_score, section_score, sentence_score, len(evidence)
 
         for row in raw_rows:
             if (row["note_type"], row["definition_version"]) not in definition_versions:
