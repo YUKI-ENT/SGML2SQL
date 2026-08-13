@@ -11,7 +11,8 @@
       "candidate_terms": ["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE", "肝臓で代謝", "肝で代謝", "グルクロン酸抱合", "硫酸抱合", "肝血流"],
       "required_evidence_term_groups": [["CYP", "UGT", "チトクロム", "代謝酵素", "基質", "阻害", "誘導", "P-gp", "P糖蛋白", "BCRP", "OATP", "OAT", "OCT", "MATE", "肝臓で代謝", "肝で代謝", "グルクロン酸抱合", "硫酸抱合", "肝血流"]],
       "allowed_relations": ["METABOLIZED_BY", "METABOLISM_PATHWAY", "HEPATIC_METABOLISM", "CLEARANCE_DEPENDS_ON_HEPATIC_BLOOD_FLOW", "SUBSTRATE_OF", "INHIBITS", "INDUCES", "NOT_METABOLIZED_BY", "NOT_SUBSTRATE_OF", "NOT_INHIBITS", "NOT_INDUCES", "EXPOSURE_INCREASED_BY_INHIBITION", "EXPOSURE_DECREASED_BY_INDUCTION"],
-      "max_facts_per_evidence": 1,
+      "max_facts_per_evidence": 7,
+      "target_evidence_relations": ["METABOLIZED_BY", "SUBSTRATE_OF", "INHIBITS", "INDUCES", "NOT_METABOLIZED_BY", "NOT_SUBSTRATE_OF", "NOT_INHIBITS", "NOT_INDUCES"],
       "instructions": "『本剤が酵素を阻害する』と『本剤の代謝が阻害される』を区別してください。併用薬だけの性質は抽出しないでください。特定酵素が明示されない場合は推定せず、肝臓で代謝される記載はHEPATIC_METABOLISM、抱合などの経路はMETABOLISM_PATHWAY、クリアランスが肝血流量に依存する記載はCLEARANCE_DEPENDS_ON_HEPATIC_BLOOD_FLOWとしてください。代謝物と割合の列挙は各代謝物へ細分化せず、経路を1件の要約にしてください。"
     },
     {

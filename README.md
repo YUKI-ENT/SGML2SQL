@@ -129,10 +129,15 @@
       ```bash
       python3 44_publish_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
       ```
+    - 検証規則を改善した場合は、保存済み`raw_response`をLLMへ再送せず再検証できます。最初にdry-runし、結果を確認してから反映します。
+      ```bash
+      python3 43_5_revalidate_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --model gemma4:31b-cloud
+      python3 43_5_revalidate_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --model gemma4:31b-cloud --execute
+      ```
     - 41～43の結果を完全初期化する場合は、最初に対象件数を確認してから実行します。
       ```bash
-      python3 45_reset_sgml_notes.py
-      python3 45_reset_sgml_notes.py --execute
+      python3 40_reset_sgml_notes.py
+      python3 40_reset_sgml_notes.py --execute
       ```
       44で公開した `sgml_note` も含める場合は `--include-published --execute` を指定します。
 

@@ -207,6 +207,31 @@ def normalized_target_code(target_name: str, proposed: Any) -> Optional[str]:
     return proposed_text or None
 
 
+def target_is_supported_by_evidence(
+    target_code: Optional[str], target_name: str, evidence: str
+) -> bool:
+    """正規化したtargetが根拠文に明示されているかを、代表的な別表記も含めて確認する。"""
+    normalized_evidence = normalize_text(evidence).casefold()
+    compact_evidence = re.sub(r"[\s\-_‐‑‒–—―・]", "", normalized_evidence)
+    aliases = {
+        "p-gp": ["p-gp", "pgp", "p糖蛋白", "p-糖蛋白", "p-glycoprotein"],
+        "bcrp": ["bcrp"],
+        "mate2-k": ["mate2-k", "mate2k"],
+    }
+    proposed_terms: List[str] = []
+    if target_code:
+        proposed_terms.extend(aliases.get(target_code.casefold(), [target_code]))
+    if target_name:
+        proposed_terms.append(target_name)
+    for term in proposed_terms:
+        compact_term = re.sub(
+            r"[\s\-_‐‑‒–—―・]", "", normalize_text(str(term)).casefold()
+        )
+        if compact_term and compact_term in compact_evidence:
+            return True
+    return False
+
+
 def exact_or_whitespace_only_span(block_text: str, proposed: str) -> Optional[str]:
     """完全一致、又は空白差だけの引用を入力本文の正確な連続文字列へ戻す。"""
     if proposed in block_text:
@@ -381,14 +406,24 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
                     f"relation_type={relation}のevidence_textが関係別必須語群"
                     f"{group_index + 1}を満たしません"
                 )
-        if field_errors:
-            errors.append(f"{prefix}: " + "; ".join(field_errors))
-            continue
         target_code = normalized_target_code(target_name, raw.get("target_code"))
         fixed_target = definition.get("relation_targets", {}).get(relation)
         if isinstance(fixed_target, dict):
             target_code = fixed_target.get("target_code")
             target_name = normalize_text(str(fixed_target.get("target_name", "")))
+        target_evidence_relations = set(definition.get("target_evidence_relations", []))
+        if relation in target_evidence_relations:
+            if not target_code and not target_name:
+                field_errors.append(f"relation_type={relation}にtargetがありません")
+            elif not target_is_supported_by_evidence(
+                target_code, target_name, relation_evidence
+            ):
+                field_errors.append(
+                    f"target={target_code or target_name!r}がevidence_textに明示されていません"
+                )
+        if field_errors:
+            errors.append(f"{prefix}: " + "; ".join(field_errors))
+            continue
         fact = {
             "relation_type": relation,
             "subject_type": subject,
