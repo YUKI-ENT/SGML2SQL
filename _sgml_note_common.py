@@ -403,6 +403,13 @@ def validate_facts(parsed: dict, definition: dict, block_text: str) -> Tuple[Lis
         fact["fact_hash"] = stable_json_hash(fact)
         valid.append(fact)
 
+    # 同一LLM応答内に完全に同じファクトが複数回含まれても、保存単位は1件にする。
+    # DBの UNIQUE (run_id, fact_hash) 違反を防ぎ、後段の件数検証にも重複を持ち込まない。
+    unique_facts: Dict[str, dict] = {}
+    for fact in valid:
+        unique_facts.setdefault(fact["fact_hash"], fact)
+    valid = list(unique_facts.values())
+
     # 1つの合計割合を列挙された成分・排泄経路へ複製する誤りを防ぐ。
     # 「それぞれ」が明記された文は個別値である可能性が高いため対象外とする。
     facts_by_evidence: Dict[str, List[dict]] = {}

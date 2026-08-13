@@ -121,3 +121,30 @@
       python3 45_reset_sgml_notes.py --execute
       ```
       44で公開した `sgml_note` も含める場合は `--include-published --execute` を指定します。
+
+12. **妊婦・授乳の全文表現とアプリ向け判定（31–35系）**
+    - 既存の `31_rawdata2women.py` / `32_label_women_risk.py` は旧方式として残しています。
+    - 関連章を差分管理可能なblockへ抽出します。章がない場合も `SECTION_ABSENT` 判定用の状態を保存します。
+      ```bash
+      python3 31_build_sgml_women_blocks.py
+      ```
+    - block内の全文を文単位で保存し、明示的な定型表現だけをルール分類します。
+      ```bash
+      python3 32_build_sgml_women_candidates.py
+      ```
+    - 既存分類へ入らない推奨表現だけをLLMへ送り、分類不能なら `UNCLASSIFIABLE` のまま残します。
+      ```bash
+      python3 33_extract_sgml_women.py --limit 100
+      ```
+    - `sgml_women_statement`へ全表現を、`sgml_women_summary`へアプリ用の代表判定を公開します。
+      ```bash
+      python3 34_publish_sgml_women.py --dry-run
+      python3 34_publish_sgml_women.py
+      ```
+    - `display_level` は `RED`（禁忌・回避）、`YELLOW`（条件付き・判定不能）、`BLUE`（明示的に使用可能）、`GRAY`（記載なし）です。無記載を安全とは扱いません。
+    - 中間テーブルのリセットは次の通りです。公開結果も消す場合だけ `--include-published` を付けます。
+      ```bash
+      python3 35_reset_sgml_women.py
+      python3 35_reset_sgml_women.py --execute
+      python3 35_reset_sgml_women.py --include-published --execute
+      ```

@@ -321,7 +321,9 @@ def main() -> None:
                             (run_id, fact_hash, relation_type, subject_type,
                              target_code, target_name, polarity, certainty,
                              note_text, details_json, evidence_text, validation_status)
-                          VALUES %s""",
+                          VALUES %s
+                          ON CONFLICT (run_id, fact_hash) DO NOTHING""",
+                        # validate_factsでも重複排除するが、保存時にも一意制約を安全網にする。
                         fact_rows,
                         page_size=100,
                     )
