@@ -115,6 +115,12 @@
     - 相互作用章は既存の `sgml_interaction` を正本とし、既定のノートブロック対象から除外しています。
     - 複数成分・複数経路をまとめた排泄割合は1件の合計値として扱います。同じ根拠文中に1回だけ現れる割合を複数ファクトへ複製した応答は自動検証で拒否します。
     - 中断後は同じコマンドを再実行できます。成功済みの同一文章はハッシュキャッシュから再利用され、LLMには再送信されません。
+    - 長時間処理の再開では、既存のreview/errorを飛ばして未処理だけを進められます。後からreview又はerrorだけを個別に再試行できます。
+      ```bash
+      python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --run-status new
+      python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --run-status review
+      python3 43_extract_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --run-status error
+      ```
     - 41～43の結果を完全初期化する場合は、最初に対象件数を確認してから実行します。
       ```bash
       python3 45_reset_sgml_notes.py

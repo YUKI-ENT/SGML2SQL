@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -54,8 +55,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt-version", help="プロンプト版を一時的に上書き")
     parser.add_argument("--wait-seconds", type=float, help="LLM呼出し後の待機秒数")
     parser.add_argument("--max-retries", type=int, help="通信・JSON不正時の再試行回数")
+    parser.add_argument(
+        "--run-status",
+        choices=["incomplete", "new", "review", "error"],
+        default="incomplete",
+        help=(
+            "処理対象。incomplete=success以外（従来動作）、new=未処理のみ、"
+            "review=要確認のみ、error=エラーのみ"
+        ),
+    )
     parser.add_argument("--force", action="store_true", help="成功済みキャッシュも再実行")
     return parser.parse_args()
+
+
+def should_process(cached_status: Optional[str], run_status: str, force: bool = False) -> bool:
+    if force:
+        return True
+    if run_status == "new":
+        return cached_status is None
+    if run_status == "review":
+        return cached_status == "review"
+    if run_status == "error":
+        return cached_status == "error"
+    return cached_status != "success"
 
 
 def create_tables(conn, run_table: str, fact_table: str) -> None:
@@ -142,6 +164,8 @@ def main() -> None:
         raise ValueError("limit は1以上にしてください")
     if wait_seconds < 0 or max_retries < 0:
         raise ValueError("wait-seconds と max-retries は0以上にしてください")
+    if args.force and args.run_status != "incomplete":
+        raise ValueError("--force と --run-status new/review/error は同時に指定できません")
 
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, run_table, fact_table)
@@ -173,20 +197,44 @@ def main() -> None:
                 if (row["note_type"], row["definition_version"]) in selected_pairs
             ]
 
-        called = succeeded = reviewed = errors = cache_hits = 0
         for candidate in candidates:
-            definition = definitions_by_type[candidate["note_type"]]
-            analysis_hash = sha256_text(
+            candidate["analysis_hash"] = sha256_text(
                 f"{candidate['content_hash']}\n{candidate['note_type']}\n"
                 f"{candidate['definition_version']}\n{prompt_version}"
             )
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
+        cached_statuses: dict[str, str] = {}
+        if analysis_hashes:
+            with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT run_id, status FROM {run_table} WHERE analysis_hash=%s AND model_name=%s",
-                    (analysis_hash, model),
+                    f"SELECT analysis_hash, status FROM {run_table} "
+                    "WHERE model_name=%s AND analysis_hash=ANY(%s)",
+                    (model, analysis_hashes),
                 )
-                cached = cur.fetchone()
-            if cached and cached["status"] == "success" and not args.force:
+                cached_statuses = {analysis_hash: status for analysis_hash, status in cur.fetchall()}
+        status_counts = Counter(cached_statuses.get(value, "new") for value in analysis_hashes)
+        eligible_count = sum(
+            should_process(cached_statuses.get(value), args.run_status, args.force)
+            for value in analysis_hashes
+        )
+        log.info(
+            "開始 model=%s mode=%s analyses=%s eligible=%s new=%s success=%s review=%s error=%s",
+            model,
+            args.run_status,
+            len(analysis_hashes),
+            eligible_count,
+            status_counts.get("new", 0),
+            status_counts.get("success", 0),
+            status_counts.get("review", 0),
+            status_counts.get("error", 0),
+        )
+
+        called = succeeded = reviewed = errors = cache_hits = 0
+        for candidate in candidates:
+            definition = definitions_by_type[candidate["note_type"]]
+            analysis_hash = candidate["analysis_hash"]
+            cached_status = cached_statuses.get(analysis_hash)
+            if not should_process(cached_status, args.run_status, args.force):
                 cache_hits += 1
                 continue
             if args.limit is not None and called >= args.limit:
@@ -328,6 +376,7 @@ def main() -> None:
                         page_size=100,
                     )
             conn.commit()
+            cached_statuses[analysis_hash] = status
             called += 1
             if status == "success":
                 succeeded += 1
