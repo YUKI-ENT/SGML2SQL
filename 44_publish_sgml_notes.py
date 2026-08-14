@@ -129,7 +129,7 @@ def main() -> None:
     where = [
         "c.is_current",
         "b.is_current",
-        "f.validation_status='AUTO_VALIDATED'",
+        "f.validation_status IN ('AUTO_VALIDATED', 'HUMAN_REVIEWED')",
         "c.note_type = ANY(%s)",
     ]
     params: List[object] = [prompt_version, models, models, note_types]
@@ -143,7 +143,7 @@ def main() -> None:
              f.polarity, f.certainty, f.note_text, f.details_json,
              f.evidence_text, b.block_id, b.section_code, b.section_type,
              b.heading_path, b.content_hash, r.prompt_version, r.model_name,
-             f.fact_hash
+             f.fact_hash, f.validation_status
         FROM {candidate_table} c
         JOIN {block_table} b ON b.block_id=c.block_id
         JOIN LATERAL (
@@ -238,7 +238,11 @@ def main() -> None:
         if args.dry_run:
             return
 
-        deactivate_where = ["review_status='AUTO_VALIDATED'", "is_current", "note_type = ANY(%s)"]
+        deactivate_where = [
+            "review_status IN ('AUTO_VALIDATED', 'HUMAN_REVIEWED')",
+            "is_current",
+            "note_type = ANY(%s)",
+        ]
         deactivate_params: List[object] = [note_types]
         if args.package_insert_no:
             deactivate_where.append("package_insert_no=%s")
@@ -260,7 +264,7 @@ def main() -> None:
                         row["evidence_text"], row["block_id"], row["section_code"],
                         row["section_type"], row["heading_path"], row["content_hash"],
                         row["definition_version"], row["prompt_version"], row["model_name"],
-                        row["fact_hash"], "AUTO_VALIDATED", True, None,
+                        row["fact_hash"], row["validation_status"], True, None,
                     )
                     for row in rows.values()
                 ]
@@ -294,11 +298,12 @@ def main() -> None:
                         definition_version=EXCLUDED.definition_version,
                         prompt_version=EXCLUDED.prompt_version,
                         model_name=EXCLUDED.model_name,
-                        review_status='AUTO_VALIDATED',
+                        review_status=EXCLUDED.review_status,
                         is_current=true,
                         last_published_at=now(),
                         superseded_at=NULL
-                      WHERE {table_base(note_table)}.review_status <> 'HUMAN_REVIEWED'""",
+                      WHERE {table_base(note_table)}.review_status <> 'HUMAN_REVIEWED'
+                         OR EXCLUDED.review_status = 'HUMAN_REVIEWED'""",
                     values,
                     page_size=500,
                 )

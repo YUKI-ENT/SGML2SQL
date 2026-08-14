@@ -134,6 +134,19 @@
       python3 43_5_revalidate_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --model gemma4:31b-cloud
       python3 43_5_revalidate_sgml_notes.py --note-type METABOLISM_TRANSPORT --model gemma4:12b --model gemma4:31b-cloud --execute
       ```
+    - 残ったreviewは2つのCSVへ出力し、ケースの`decision/reviewer/review_comment`と、採用するfactの`include`及び内容を編集できます。`--model`の記載順で参照するreview応答を優先します。
+      ```bash
+      python3 43_6_export_sgml_note_reviews.py --note-type METABOLISM_TRANSPORT --model gemma4:31b-cloud --model gemma4:12b --output-dir ./manual_review/metabolism
+      ```
+    - 編集後は必ずdry-runで原文一致等を再検証し、問題がなければ`human-review`として反映します。元のLLM runは変更しません。
+      ```bash
+      python3 43_7_import_sgml_note_reviews.py --cases ./manual_review/metabolism/sgml_note_review_cases.csv --facts ./manual_review/metabolism/sgml_note_review_facts.csv
+      python3 43_7_import_sgml_note_reviews.py --cases ./manual_review/metabolism/sgml_note_review_cases.csv --facts ./manual_review/metabolism/sgml_note_review_facts.csv --execute
+      ```
+      公開時は手動判断を最優先にします。`EXCLUDE`はsuccessかつfactなしとして、下位モデルのfactも公開対象から除外します。
+      ```bash
+      python3 44_publish_sgml_notes.py --note-type METABOLISM_TRANSPORT --model human-review --fallback-model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
+      ```
     - 41～43の結果を完全初期化する場合は、最初に対象件数を確認してから実行します。
       ```bash
       python3 40_reset_sgml_notes.py
