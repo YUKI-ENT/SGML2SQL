@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple
 import psycopg2
 import psycopg2.extras
 
-from _sgml_note_common import checked_table_name, load_config, stable_json_hash, table_base
+from _sgml_note_common import checked_table_name, config_with_global_fallback, load_config, stable_json_hash, table_base
 from _sgml_women_common import CLASSIFICATION_META, assessment_for_codes
 
 
@@ -103,7 +103,9 @@ def main() -> None:
     fact_table = checked_table_name(config.get("temp_sgml_women_fact_table", "public.temp_sgml_women_fact"), "temp_sgml_women_fact_table")
     statement_table = checked_table_name(config.get("sgml_women_statement_table", "public.sgml_women_statement"), "sgml_women_statement_table")
     summary_table = checked_table_name(config.get("sgml_women_summary_table", "public.sgml_women_summary"), "sgml_women_summary_table")
-    model = args.model or config.get("women_ollama_model", config.get("note_ollama_model", "gpt-oss:20b"))
+    model = args.model or config_with_global_fallback(
+        config, "women_ollama_model", "ollama_model", "gpt-oss:20b"
+    )
     prompt_version = args.prompt_version or config.get("women_prompt_version", "sgml-women-v1")
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, statement_table, summary_table)

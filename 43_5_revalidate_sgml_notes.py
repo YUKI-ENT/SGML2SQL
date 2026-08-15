@@ -16,6 +16,7 @@ import psycopg2.extras
 
 from _sgml_note_common import (
     checked_table_name,
+    config_with_global_fallback,
     json_from_model_text,
     load_config,
     load_definitions,
@@ -38,7 +39,7 @@ def parse_args() -> argparse.Namespace:
         "--model",
         action="append",
         default=[],
-        help="対象モデル。複数回指定可。省略時はconfigのnote_ollama_model",
+        help="対象モデル。複数回指定可。省略時はnote_ollama_model、未指定ならollama_model",
     )
     parser.add_argument(
         "--status",
@@ -107,7 +108,9 @@ def main() -> None:
         for definition in definitions
     }
     models = args.model or [
-        config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
+        config_with_global_fallback(
+            config, "note_ollama_model", "ollama_model", "gpt-oss:20b"
+        )
     ]
     prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
     block_table = checked_table_name(

@@ -21,6 +21,7 @@ from _sgml_note_common import (
     build_prompt,
     call_ollama,
     checked_table_name,
+    config_with_global_fallback,
     json_from_model_text,
     load_config,
     load_definitions,
@@ -164,11 +165,28 @@ def main() -> None:
         config.get("temp_sgml_note_fact_table", "public.temp_sgml_note_fact"),
         "temp_sgml_note_fact_table",
     )
-    model = args.model or config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
-    url = config.get("note_ollama_url", config.get("ollama_url", "http://localhost:11434/api/generate"))
-    timeout = int(config.get("note_ollama_timeout", config.get("pk_ollama_timeout", 600)))
+    model = args.model or config_with_global_fallback(
+        config, "note_ollama_model", "ollama_model", "gpt-oss:20b"
+    )
+    url = config_with_global_fallback(
+        config,
+        "note_ollama_url",
+        "ollama_url",
+        "http://localhost:11434/api/generate",
+    )
+    timeout = int(
+        config_with_global_fallback(config, "note_ollama_timeout", "ollama_timeout", 600)
+    )
     prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
-    wait_seconds = args.wait_seconds if args.wait_seconds is not None else float(config.get("note_llm_wait", 0))
+    wait_seconds = (
+        args.wait_seconds
+        if args.wait_seconds is not None
+        else float(
+            config_with_global_fallback(
+                config, "note_llm_wait", "gpu_cooling_wait", 0
+            )
+        )
+    )
     max_retries = args.max_retries if args.max_retries is not None else int(config.get("note_llm_max_retries", 2))
     if args.limit is not None and args.limit <= 0:
         raise ValueError("limit は1以上にしてください")
@@ -257,8 +275,13 @@ def main() -> None:
             for value in analysis_hashes
         )
         log.info(
-            "開始 model=%s mode=%s analyses=%s eligible=%s new=%s success=%s review=%s error=%s",
+            "開始 model=%s url=%s timeout=%ss wait=%ss prompt=%s mode=%s "
+            "analyses=%s eligible=%s new=%s success=%s review=%s error=%s",
             model,
+            url,
+            timeout,
+            wait_seconds,
+            prompt_version,
             args.run_status,
             len(analysis_hashes),
             eligible_count,

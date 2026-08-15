@@ -51,6 +51,8 @@
 6. **`config.json`の作成編集**
    - 添付の`config.json.sample`を`config.json`としてコピーし、編集します。
    - ` "db": {"host": "localhost" `、`user`、`password`、`DI_folder`あたりを環境に合わせて書き換えてください。
+   - `ollama_url`、`ollama_model`、`ollama_timeout`、`gpu_cooling_wait`はLLM処理の共通設定です。`note_ollama_*`又は`women_ollama_*`が未指定の場合、41～44系及び31～35系は対応する共通設定を使用します。待機時間は`note_llm_wait`又は`women_llm_wait`があればそれを優先し、未指定なら`gpu_cooling_wait`を使用します。
+   - 設定の優先順位は、コマンドライン指定、機能別設定、共通設定、コード既定値の順です。41のブロック最大長は`note_max_block_length`が未指定なら`chunk_length`を使用します。意味ブロック方式では重複チャンクを作らないため、`chunk_overlap`は41系及びwomen系では使用しません。
 7. **21_sgml2rawdata.pyの実行**
    - SGMLファイルからSQLサーバーにXMLデータをアップロードします。
     ```bash
@@ -87,6 +89,7 @@
       ```
 
 11. **汎用 `sgml_note` パイプライン（仮実装）**
+    - 公開後のDB構成、アプリ検索、RAG利用及び医療利用上の注意は [`SGML_NOTE_APPLICATION_GUIDE.md`](SGML_NOTE_APPLICATION_GUIDE.md) を参照してください。
     - `sgml_rawdata` 作成後、添付文書を意味ブロックへ差分展開します。XML全体が変更されても、意味ブロックのハッシュが同じならLLM処理は再実行されません。
       ```bash
       python3 41_build_sgml_note_blocks.py

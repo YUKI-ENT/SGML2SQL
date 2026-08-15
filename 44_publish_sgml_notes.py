@@ -15,6 +15,7 @@ import psycopg2.extras
 
 from _sgml_note_common import (
     checked_table_name,
+    config_with_global_fallback,
     load_config,
     load_definitions,
     select_definitions,
@@ -118,7 +119,9 @@ def main() -> None:
     run_table = checked_table_name(config.get("temp_sgml_note_run_table", "public.temp_sgml_note_run"), "temp_sgml_note_run_table")
     fact_table = checked_table_name(config.get("temp_sgml_note_fact_table", "public.temp_sgml_note_fact"), "temp_sgml_note_fact_table")
     note_table = checked_table_name(config.get("sgml_note_table", "public.sgml_note"), "sgml_note_table")
-    model = args.model or config.get("note_ollama_model", config.get("pk_ollama_model", "gpt-oss:20b"))
+    model = args.model or config_with_global_fallback(
+        config, "note_ollama_model", "ollama_model", "gpt-oss:20b"
+    )
     models = list(dict.fromkeys([model, *args.fallback_model]))
     prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
 

@@ -20,6 +20,7 @@ import psycopg2.extras
 
 from _sgml_note_common import (
     checked_table_name,
+    config_with_global_fallback,
     load_config,
     normalize_text,
     sha256_text,
@@ -342,7 +343,9 @@ def main() -> None:
         config.get("sgml_note_block_table", "public.sgml_note_block"),
         "sgml_note_block_table",
     )
-    max_length = args.max_block_length or int(config.get("note_max_block_length", 3000))
+    max_length = args.max_block_length or int(
+        config_with_global_fallback(config, "note_max_block_length", "chunk_length", 3000)
+    )
     extractor_version = str(config.get("note_block_extractor_version", "sgml-block-v7"))
     configured_sections = config.get("note_included_top_sections")
     if configured_sections is None:

@@ -22,6 +22,15 @@ def load_config(path: str) -> dict:
         return json.load(f)
 
 
+def config_with_global_fallback(
+    config: dict, specific_key: str, global_key: str, default: Any
+) -> Any:
+    """機能別設定が未指定なら共通設定を返す。明示的な0や空文字は保持する。"""
+    if specific_key in config and config[specific_key] is not None:
+        return config[specific_key]
+    return config.get(global_key, default)
+
+
 def load_definitions(path: str) -> List[dict]:
     with open(path, "r", encoding="utf-8") as f:
         root = json.load(f)

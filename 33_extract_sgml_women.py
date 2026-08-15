@@ -16,7 +16,7 @@ from typing import List, Optional
 import psycopg2
 import psycopg2.extras
 
-from _sgml_note_common import call_ollama, checked_table_name, exact_or_whitespace_only_span, json_from_model_text, load_config, sha256_text, table_base
+from _sgml_note_common import call_ollama, checked_table_name, config_with_global_fallback, exact_or_whitespace_only_span, json_from_model_text, load_config, sha256_text, table_base
 from _sgml_women_common import CLASSIFICATION_META, PIPELINE_VERSION, classification_is_supported
 
 
@@ -137,16 +137,41 @@ def main() -> None:
     candidate_table = checked_table_name(config.get("temp_sgml_women_candidate_table", "public.temp_sgml_women_candidate"), "temp_sgml_women_candidate_table")
     run_table = checked_table_name(config.get("temp_sgml_women_run_table", "public.temp_sgml_women_run"), "temp_sgml_women_run_table")
     fact_table = checked_table_name(config.get("temp_sgml_women_fact_table", "public.temp_sgml_women_fact"), "temp_sgml_women_fact_table")
-    model = args.model or config.get("women_ollama_model", config.get("note_ollama_model", "gpt-oss:20b"))
-    url = config.get("women_ollama_url", config.get("note_ollama_url", config.get("ollama_url")))
-    timeout = int(config.get("women_ollama_timeout", config.get("note_ollama_timeout", 600)))
+    model = args.model or config_with_global_fallback(
+        config, "women_ollama_model", "ollama_model", "gpt-oss:20b"
+    )
+    url = config_with_global_fallback(
+        config,
+        "women_ollama_url",
+        "ollama_url",
+        "http://localhost:11434/api/generate",
+    )
+    timeout = int(
+        config_with_global_fallback(config, "women_ollama_timeout", "ollama_timeout", 600)
+    )
     prompt_version = args.prompt_version or config.get("women_prompt_version", "sgml-women-v1")
     max_retries = args.max_retries if args.max_retries is not None else int(config.get("women_llm_max_retries", 2))
-    wait_seconds = args.wait_seconds if args.wait_seconds is not None else float(config.get("women_llm_wait", 0))
+    wait_seconds = (
+        args.wait_seconds
+        if args.wait_seconds is not None
+        else float(
+            config_with_global_fallback(
+                config, "women_llm_wait", "gpu_cooling_wait", 0
+            )
+        )
+    )
     if args.limit is not None and args.limit <= 0:
         raise ValueError("limitは1以上にしてください")
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, run_table, fact_table)
+    log.info(
+        "開始 model=%s url=%s timeout=%ss wait=%ss prompt=%s",
+        model,
+        url,
+        timeout,
+        wait_seconds,
+        prompt_version,
+    )
     where, params = ["is_current", "requires_llm"], []
     if args.package_insert_no:
         where.append("package_insert_no=%s")
