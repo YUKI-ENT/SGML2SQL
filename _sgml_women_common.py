@@ -134,10 +134,16 @@ def normalize_recommendation_target(value: Any, classification_code: str) -> Opt
 
 
 def exact_women_evidence(source: str, evidence: str) -> Optional[str]:
-    """原文全文との一致を確認し、モデルが末尾へ足したカンマだけを安全に除く。"""
+    """原文全文との一致を確認し、末尾句読点だけの差なら原文へ復元する。"""
     exact = exact_or_whitespace_only_span(source, evidence)
-    if exact:
+    if exact == source:
         return exact
+    source_stem = re.sub(r"[,，。．.!！?？]+\s*$", "", source).rstrip()
+    evidence_stem = re.sub(r"[,，。．.!！?？]+\s*$", "", evidence).rstrip()
+    compact_source_stem = "".join(char for char in source_stem if not char.isspace())
+    compact_evidence_stem = "".join(char for char in evidence_stem if not char.isspace())
+    if compact_source_stem and compact_source_stem == compact_evidence_stem:
+        return source
     without_spurious_commas = re.sub(
         r"[,，]+(?=\s*(?:[。．.!！?？]|$))",
         "",
@@ -145,7 +151,8 @@ def exact_women_evidence(source: str, evidence: str) -> Optional[str]:
     )
     if without_spurious_commas == evidence:
         return None
-    return exact_or_whitespace_only_span(source, without_spurious_commas)
+    exact = exact_or_whitespace_only_span(source, without_spurious_commas)
+    return exact if exact == source else None
 
 
 def validate_llm_response(parsed: dict, candidate: dict) -> tuple[Optional[dict], List[str]]:
