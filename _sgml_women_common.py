@@ -146,10 +146,16 @@ def validate_llm_response(parsed: dict, candidate: dict) -> tuple[Optional[dict]
         errors.append(f"recommendation_target={target!r}は許可されていません")
     if not exact or exact != candidate["evidence_text"]:
         errors.append("evidence_textが入力文全体と一致しません")
-    if code in CLASSIFICATION_META and not classification_is_supported(
-        candidate["population_type"], code, exact or ""
+    if (
+        code in CLASSIFICATION_META
+        and exact
+        and not classification_is_supported(candidate["population_type"], code, exact)
     ):
-        errors.append(f"classification_code={code}を入力文が明示的に支持しません")
+        # 原文は一致しているが強い分類の明示根拠がない場合、推測で赤判定にしない。
+        # 「分類可能なら分類、不可能なら明記」という方針に従い黄判定へ落とす。
+        code = "UNCLASSIFIABLE"
+        target = None
+        assessment = "既存分類へ確実に分類できない記載"
     if not assessment:
         errors.append("assessment_textが空です")
     if errors:

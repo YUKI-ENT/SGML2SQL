@@ -129,7 +129,8 @@ def main() -> None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""SELECT r.run_id,r.model_name,r.status AS old_status,
-                           r.raw_response,c.evidence_text,c.population_type
+                           r.raw_response,r.response_json,
+                           c.evidence_text,c.population_type
                       FROM {run_table} r
                       JOIN LATERAL (
                            SELECT candidate.evidence_text,
@@ -157,10 +158,20 @@ def main() -> None:
             valid: Optional[dict] = None
             validation_errors: List[str] = []
             error_message: Optional[str] = None
+            can_update = True
             try:
-                if not run["raw_response"]:
-                    raise ValueError("raw_responseがありません")
-                parsed = json_from_model_text(run["raw_response"])
+                raw_parse_error: Optional[Exception] = None
+                if run["raw_response"]:
+                    try:
+                        parsed = json_from_model_text(run["raw_response"])
+                    except Exception as exc:
+                        raw_parse_error = exc
+                if parsed is None and isinstance(run.get("response_json"), dict):
+                    parsed = run["response_json"]
+                if parsed is None:
+                    if raw_parse_error is not None:
+                        raise raw_parse_error
+                    raise ValueError("raw_responseとresponse_jsonがありません")
                 valid, validation_errors = validate_llm_response(parsed, run)
                 if validation_errors:
                     new_status = "review"
@@ -168,11 +179,13 @@ def main() -> None:
                 else:
                     new_status = "success"
             except Exception as exc:
-                new_status = "error"
-                error_message = f"{type(exc).__name__}: {exc}"
+                # 保存済み応答を再解析できないだけで、既存の判定やファクトを破壊しない。
+                new_status = run["old_status"]
+                error_message = f"再検証を保留: {type(exc).__name__}: {exc}"
                 validation_errors = []
+                can_update = False
             outcomes[(run["model_name"], run["old_status"], new_status)] += 1
-            if not args.execute:
+            if not args.execute or not can_update:
                 continue
             response_json = valid if valid is not None else parsed
             with conn.cursor() as cur:

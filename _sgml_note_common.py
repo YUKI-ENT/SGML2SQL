@@ -121,6 +121,13 @@ def remove_json_trailing_commas(text: str) -> str:
 
 def json_from_model_text(text: str) -> dict:
     text = text.strip()
+    fenced_objects = re.findall(
+        r"```(?:json)?\s*(\{.*?\})\s*```",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    # モデルが誤回答の後に訂正版JSONを出す場合は、最後のJSONブロックを採用する。
+    # 通常応答との互換性を保つため、まず従来どおり応答全体を試す。
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text)
@@ -129,6 +136,7 @@ def json_from_model_text(text: str) -> dict:
     end = text.rfind("}")
     if start >= 0 and end > start and (start != 0 or end != len(text) - 1):
         candidates.append(text[start : end + 1])
+    candidates.extend(reversed(fenced_objects))
     parse_error: Optional[json.JSONDecodeError] = None
     value: Any = None
     parsed = False
