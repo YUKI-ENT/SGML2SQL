@@ -133,13 +133,28 @@ def normalize_recommendation_target(value: Any, classification_code: str) -> Opt
     return normalized
 
 
+def exact_women_evidence(source: str, evidence: str) -> Optional[str]:
+    """原文全文との一致を確認し、モデルが末尾へ足したカンマだけを安全に除く。"""
+    exact = exact_or_whitespace_only_span(source, evidence)
+    if exact:
+        return exact
+    without_spurious_commas = re.sub(
+        r"[,，]+(?=\s*(?:[。．.!！?？]|$))",
+        "",
+        evidence,
+    )
+    if without_spurious_commas == evidence:
+        return None
+    return exact_or_whitespace_only_span(source, without_spurious_commas)
+
+
 def validate_llm_response(parsed: dict, candidate: dict) -> tuple[Optional[dict], List[str]]:
     errors: List[str] = []
     code = str(parsed.get("classification_code", "")).upper()
     target = normalize_recommendation_target(parsed.get("recommendation_target"), code)
     evidence = str(parsed.get("evidence_text", "")).strip()
     assessment = str(parsed.get("assessment_text", "")).strip()
-    exact = exact_or_whitespace_only_span(candidate["evidence_text"], evidence) if evidence else None
+    exact = exact_women_evidence(candidate["evidence_text"], evidence) if evidence else None
     if code not in CLASSIFICATION_META:
         errors.append(f"classification_code={code!r}は許可されていません")
     if target not in {None, "DRUG", "BREASTFEEDING"}:
