@@ -17,8 +17,8 @@ from typing import List, Optional
 import psycopg2
 import psycopg2.extras
 
-from _sgml_note_common import call_ollama, checked_table_name, config_with_global_fallback, exact_or_whitespace_only_span, json_from_model_text, load_config, sha256_text, table_base
-from _sgml_women_common import CLASSIFICATION_META, PIPELINE_VERSION, classification_is_supported
+from _sgml_note_common import call_ollama, checked_table_name, config_with_global_fallback, json_from_model_text, load_config, sha256_text, table_base
+from _sgml_women_common import CLASSIFICATION_META, PIPELINE_VERSION, validate_llm_response
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -82,12 +82,12 @@ evidence_textは入力文を変更せず、そのまま返してください。
 
 対象: {population}
 許可分類: {allowed}
-recommendation_target: DRUG|BREASTFEEDING|null
+recommendation_targetはDRUG、BREASTFEEDING、又は引用符なしのJSON nullとしてください。
 
 JSONだけを返してください。
 {{
   "classification_code": "許可分類のいずれか",
-  "recommendation_target": "DRUG|BREASTFEEDING|null",
+  "recommendation_target": null,
   "assessment_text": "原文に忠実な短い要約",
   "evidence_text": "入力文の完全な引用"
 }}
@@ -95,29 +95,6 @@ JSONだけを返してください。
 【入力文】
 {candidate['evidence_text']}
 """
-
-
-def validate_response(parsed: dict, candidate: dict) -> tuple[Optional[dict], List[str]]:
-    errors: List[str] = []
-    code = str(parsed.get("classification_code", "")).upper()
-    target = parsed.get("recommendation_target")
-    target = str(target).upper() if target is not None else None
-    evidence = str(parsed.get("evidence_text", "")).strip()
-    assessment = str(parsed.get("assessment_text", "")).strip()
-    exact = exact_or_whitespace_only_span(candidate["evidence_text"], evidence) if evidence else None
-    if code not in CLASSIFICATION_META:
-        errors.append(f"classification_code={code!r}は許可されていません")
-    if target not in {None, "DRUG", "BREASTFEEDING"}:
-        errors.append(f"recommendation_target={target!r}は許可されていません")
-    if not exact or exact != candidate["evidence_text"]:
-        errors.append("evidence_textが入力文全体と一致しません")
-    if code in CLASSIFICATION_META and not classification_is_supported(candidate["population_type"], code, exact or ""):
-        errors.append(f"classification_code={code}を入力文が明示的に支持しません")
-    if not assessment:
-        errors.append("assessment_textが空です")
-    if errors:
-        return None, errors
-    return {"classification_code": code, "recommendation_target": target, "assessment_text": assessment, "evidence_text": exact}, []
 
 
 def create_tables(conn, run_table: str, fact_table: str) -> None:
@@ -307,7 +284,7 @@ def main() -> None:
                 try:
                     raw_response, _outer = call_ollama(url, model, prompt, timeout)
                     parsed = json_from_model_text(raw_response)
-                    valid, validation_errors = validate_response(parsed, candidate)
+                    valid, validation_errors = validate_llm_response(parsed, candidate)
                     response_at = datetime.now(timezone.utc)
                     if validation_errors:
                         status, error_message = "review", "LLM応答が検証不合格です"

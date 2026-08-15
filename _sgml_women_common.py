@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from _sgml_note_common import normalize_text, stable_json_hash
+from _sgml_note_common import exact_or_whitespace_only_span, normalize_text, stable_json_hash
 
 
 PIPELINE_VERSION = "sgml-women-v1"
@@ -119,6 +119,47 @@ def classification_is_supported(population_type: str, code: str, evidence: str) 
     if code in {"STOP_BREASTFEEDING", "CONSIDER_CONTINUE_OR_STOP"} and population_type != "LACTATION":
         return False
     return True
+
+
+def normalize_recommendation_target(value: Any, classification_code: str) -> Optional[str]:
+    """LLMがJSON nullを文字列で返した場合も安全にNULLへ正規化する。"""
+    if classification_code == "UNCLASSIFIABLE":
+        return None
+    if value is None:
+        return None
+    normalized = str(value).strip().upper()
+    if normalized in {"", "NULL", "NONE"}:
+        return None
+    return normalized
+
+
+def validate_llm_response(parsed: dict, candidate: dict) -> tuple[Optional[dict], List[str]]:
+    errors: List[str] = []
+    code = str(parsed.get("classification_code", "")).upper()
+    target = normalize_recommendation_target(parsed.get("recommendation_target"), code)
+    evidence = str(parsed.get("evidence_text", "")).strip()
+    assessment = str(parsed.get("assessment_text", "")).strip()
+    exact = exact_or_whitespace_only_span(candidate["evidence_text"], evidence) if evidence else None
+    if code not in CLASSIFICATION_META:
+        errors.append(f"classification_code={code!r}は許可されていません")
+    if target not in {None, "DRUG", "BREASTFEEDING"}:
+        errors.append(f"recommendation_target={target!r}は許可されていません")
+    if not exact or exact != candidate["evidence_text"]:
+        errors.append("evidence_textが入力文全体と一致しません")
+    if code in CLASSIFICATION_META and not classification_is_supported(
+        candidate["population_type"], code, exact or ""
+    ):
+        errors.append(f"classification_code={code}を入力文が明示的に支持しません")
+    if not assessment:
+        errors.append("assessment_textが空です")
+    if errors:
+        return None, errors
+    return {
+        "classification_code": code,
+        "recommendation_target": target,
+        "assessment_text": assessment,
+        "evidence_text": exact,
+    }, []
 
 
 def assessment_for_codes(codes: Iterable[Optional[str]], has_section: bool) -> Tuple[str, str, str]:

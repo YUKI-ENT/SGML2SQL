@@ -175,6 +175,11 @@
       ```bash
       python3 33_extract_sgml_women.py --model gemma4:31b-cloud --source-model gemma4:12b --source-status review error --run-status new
       ```
+    - 検証規則を改善した場合は、保存済み応答をLLMへ再送せず再検証できます。既定ではreview/errorが対象です。最初にdry-runし、問題なければ反映します。
+      ```bash
+      python3 33_5_revalidate_sgml_women.py --model gemma4:31b-cloud
+      python3 33_5_revalidate_sgml_women.py --model gemma4:31b-cloud --execute
+      ```
     - `sgml_women_statement`へ全表現を、`sgml_women_summary`へアプリ用の代表判定を公開します。
       ```bash
       python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
