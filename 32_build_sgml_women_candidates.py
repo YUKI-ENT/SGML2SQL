@@ -15,7 +15,7 @@ import psycopg2
 import psycopg2.extras
 
 from _sgml_note_common import checked_table_name, load_config, table_base
-from _sgml_women_common import PIPELINE_VERSION, classify_statement, split_statements, statement_hash
+from _sgml_women_common import RULE_DEFINITION_VERSION, classify_statement, split_statements, statement_hash
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -93,7 +93,7 @@ def main() -> None:
                 occurrences[evidence] += 1
                 classified = classify_statement(block["population_type"], evidence)
                 digest = statement_hash(block["population_type"], evidence, occurrences[evidence])
-                rows.append((block["block_id"], block["package_insert_no"], block["population_type"], order, digest, evidence, classified["expression_type"], classified["classification_code"], classified["recommendation_target"], classified["requires_llm"], PIPELINE_VERSION, True, None))
+                rows.append((block["block_id"], block["package_insert_no"], block["population_type"], order, digest, evidence, classified["expression_type"], classified["classification_code"], classified["recommendation_target"], classified["requires_llm"], RULE_DEFINITION_VERSION, True, None))
                 counts[classified["classification_code"] or classified["expression_type"]] += 1
         if rows:
             with conn.cursor() as cur:

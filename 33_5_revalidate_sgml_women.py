@@ -127,6 +127,7 @@ def main() -> None:
     selected = updated = 0
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # ルール定義版が更新されても、同じ原文ハッシュの保存済みLLM応答を再検証する。
             cur.execute(
                 f"""SELECT r.run_id,r.model_name,r.status AS old_status,
                            r.raw_response,r.response_json,
@@ -141,7 +142,6 @@ def main() -> None:
                               AND candidate.requires_llm
                               AND candidate.statement_hash=r.statement_hash
                               AND candidate.population_type=r.population_type
-                              AND candidate.definition_version=r.definition_version
                             ORDER BY candidate.candidate_id
                             LIMIT 1
                       ) c ON true

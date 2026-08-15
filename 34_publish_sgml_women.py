@@ -15,7 +15,7 @@ import psycopg2
 import psycopg2.extras
 
 from _sgml_note_common import checked_table_name, config_with_global_fallback, load_config, stable_json_hash, table_base
-from _sgml_women_common import CLASSIFICATION_META, assessment_for_codes
+from _sgml_women_common import CLASSIFICATION_META, RULE_DEFINITION_VERSION, assessment_for_codes
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -134,6 +134,7 @@ def main() -> None:
             candidates = [dict(row) for row in cur.fetchall()]
             cur.execute(f"SELECT * FROM {state_table} WHERE {' AND '.join(state_where)} ORDER BY package_insert_no,population_type", state_params)
             states = [dict(row) for row in cur.fetchall()]
+            # ルール定義版とは独立に、原文が同じ保存済みLLM成功結果を再利用する。
             cur.execute(
                 f"""SELECT DISTINCT ON (r.statement_hash,r.population_type)
                            r.statement_hash,r.population_type,r.prompt_version,r.model_name,
@@ -211,7 +212,7 @@ def main() -> None:
             if matching:
                 reason = matching[0]["statement_id"]
             has_unclassified = "UNCLASSIFIABLE" in codes
-            summaries.append((state["package_insert_no"], state["population_type"], state["prepared_ym"], state["generic_name_ja"], assessment_code, display_level, assessment_text, reason, has_unclassified, has_unclassified, len(items), state["extractor_version"]))
+            summaries.append((state["package_insert_no"], state["population_type"], state["prepared_ym"], state["generic_name_ja"], assessment_code, display_level, assessment_text, reason, has_unclassified, has_unclassified, len(items), RULE_DEFINITION_VERSION))
         with conn.cursor() as cur:
             if summaries:
                 psycopg2.extras.execute_values(cur, f"""INSERT INTO {summary_table} (package_insert_no,population_type,prepared_ym,generic_name_ja,assessment_code,display_level,assessment_text,reason_statement_id,needs_review,has_unclassified,statement_count,definition_version) VALUES %s ON CONFLICT (package_insert_no,population_type) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,assessment_code=EXCLUDED.assessment_code,display_level=EXCLUDED.display_level,assessment_text=EXCLUDED.assessment_text,reason_statement_id=EXCLUDED.reason_statement_id,needs_review=EXCLUDED.needs_review,has_unclassified=EXCLUDED.has_unclassified,statement_count=EXCLUDED.statement_count,definition_version=EXCLUDED.definition_version,updated_at=now()""", summaries, page_size=500)

@@ -18,7 +18,7 @@ import psycopg2
 import psycopg2.extras
 
 from _sgml_note_common import call_ollama, checked_table_name, config_with_global_fallback, json_from_model_text, load_config, sha256_text, table_base
-from _sgml_women_common import CLASSIFICATION_META, PIPELINE_VERSION, validate_llm_response
+from _sgml_women_common import CLASSIFICATION_META, LLM_DEFINITION_VERSION, validate_llm_response
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -194,7 +194,7 @@ def main() -> None:
             candidates = [dict(row) for row in cur.fetchall()]
         for candidate in candidates:
             candidate["analysis_hash"] = sha256_text(
-                f"{candidate['statement_hash']}\n{PIPELINE_VERSION}\n{prompt_version}"
+                f"{candidate['statement_hash']}\n{LLM_DEFINITION_VERSION}\n{prompt_version}"
             )
         analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
         if args.source_model:
@@ -308,7 +308,7 @@ def main() -> None:
                     if wait_seconds > 0:
                         time.sleep(wait_seconds)
             with conn.cursor() as cur:
-                cur.execute(f"""INSERT INTO {run_table} (candidate_id,analysis_hash,statement_hash,population_type,definition_version,prompt_version,model_name,server_url,status,attempts,raw_response,response_json,validation_errors,error_message,request_at,response_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (analysis_hash,model_name) DO UPDATE SET candidate_id=EXCLUDED.candidate_id,status=EXCLUDED.status,attempts={table_base(run_table)}.attempts+EXCLUDED.attempts,raw_response=EXCLUDED.raw_response,response_json=EXCLUDED.response_json,validation_errors=EXCLUDED.validation_errors,error_message=EXCLUDED.error_message,request_at=EXCLUDED.request_at,response_at=EXCLUDED.response_at,updated_at=now() RETURNING run_id""", (candidate["candidate_id"], analysis_hash, candidate["statement_hash"], candidate["population_type"], PIPELINE_VERSION, prompt_version, model, url, status, attempts, raw_response, psycopg2.extras.Json(parsed) if parsed is not None else None, psycopg2.extras.Json(validation_errors), error_message, request_at, response_at))
+                cur.execute(f"""INSERT INTO {run_table} (candidate_id,analysis_hash,statement_hash,population_type,definition_version,prompt_version,model_name,server_url,status,attempts,raw_response,response_json,validation_errors,error_message,request_at,response_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (analysis_hash,model_name) DO UPDATE SET candidate_id=EXCLUDED.candidate_id,status=EXCLUDED.status,attempts={table_base(run_table)}.attempts+EXCLUDED.attempts,raw_response=EXCLUDED.raw_response,response_json=EXCLUDED.response_json,validation_errors=EXCLUDED.validation_errors,error_message=EXCLUDED.error_message,request_at=EXCLUDED.request_at,response_at=EXCLUDED.response_at,updated_at=now() RETURNING run_id""", (candidate["candidate_id"], analysis_hash, candidate["statement_hash"], candidate["population_type"], LLM_DEFINITION_VERSION, prompt_version, model, url, status, attempts, raw_response, psycopg2.extras.Json(parsed) if parsed is not None else None, psycopg2.extras.Json(validation_errors), error_message, request_at, response_at))
                 run_id = cur.fetchone()[0]
                 cur.execute(f"DELETE FROM {fact_table} WHERE run_id=%s", (run_id,))
                 if valid is not None:

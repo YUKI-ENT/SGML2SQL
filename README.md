@@ -187,6 +187,12 @@
       python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud
       ```
     - `display_level` は `RED`（禁忌・回避）、`YELLOW`（条件付き・判定不能）、`BLUE`（明示的に使用可能）、`GRAY`（記載なし）です。無記載を安全とは扱いません。
+    - 分類ルールだけを更新した場合は31と33を再実行せず、32で再分類して34で再公開します。ブロック抽出版、ルール版、LLM定義版を分離しているため、保存済みLLM成功結果は文ハッシュで再利用されます。
+      ```bash
+      python3 32_build_sgml_women_candidates.py
+      python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
+      python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud
+      ```
     - 中間テーブルのリセットは次の通りです。公開結果も消す場合だけ `--include-published` を付けます。
       ```bash
       python3 35_reset_sgml_women.py

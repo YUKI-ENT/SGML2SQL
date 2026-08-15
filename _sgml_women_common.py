@@ -11,7 +11,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from _sgml_note_common import exact_or_whitespace_only_span, normalize_text, stable_json_hash
 
 
-PIPELINE_VERSION = "sgml-women-v1"
+BLOCK_EXTRACTOR_VERSION = "sgml-women-v1"
+LLM_DEFINITION_VERSION = "sgml-women-v1"
+RULE_DEFINITION_VERSION = "sgml-women-rules-v2"
+# 既存コードとの互換用。新規コードでは用途別定数を使用する。
+PIPELINE_VERSION = LLM_DEFINITION_VERSION
 POPULATIONS = {"PREGNANCY", "LACTATION"}
 
 CLASSIFICATION_META: Dict[str, Tuple[str, str, int]] = {
@@ -32,8 +36,8 @@ def _rx(pattern: str) -> re.Pattern[str]:
 
 PREGNANCY_RULES = [
     ("CONTRAINDICATED", "DRUG", _rx(r"禁忌|投与してはならない|使用してはならない")),
-    ("PREFER_AVOID", "DRUG", _rx(r"(?:投与|使用)しないことが望ましい|(?:投与|使用)を避けることが望ましい")),
-    ("AVOID", "DRUG", _rx(r"(?:投与|使用)しないこと(?!が望ましい)|(?:投与|使用)を避けること(?!が望ましい)|原則として?(?:投与|使用)しない")),
+    ("PREFER_AVOID", "DRUG", _rx(r"(?:投与|使用)(?:を)?しないことが望ましい|(?:投与|使用)を避けることが望ましい")),
+    ("AVOID", "DRUG", _rx(r"(?:投与|使用)(?:を)?しないこと(?!が望ましい)|(?:投与|使用)せず|(?:投与|使用)を避けること(?!が望ましい)|原則として?(?:投与|使用)(?:を)?しない")),
     ("BENEFIT_RISK", "DRUG", _rx(r"(?:有益性|ベネフィット|利益).*(?:危険性|リスク).*(?:上回|上まわ|上廻)")),
     ("ACCEPTABLE", "DRUG", _rx(r"投与して差し支えない|使用して差し支えない|投与可能である|使用可能である")),
 ]
@@ -42,6 +46,9 @@ LACTATION_RULES = [
     ("CONTRAINDICATED", "DRUG", _rx(r"授乳婦.{0,30}(?:禁忌|投与してはならない|使用してはならない)")),
     ("CONSIDER_CONTINUE_OR_STOP", "BREASTFEEDING", _rx(r"授乳.{0,30}(?:継続|続行).{0,30}(?:中止|中断).{0,20}(?:検討|考慮)|(?:有益性|ベネフィット).{0,50}授乳.{0,30}(?:継続|中止)")),
     ("STOP_BREASTFEEDING", "BREASTFEEDING", _rx(r"授乳.{0,20}(?:中止|中断)|断乳|母乳栄養.{0,20}(?:中止|中断)")),
+    ("PREFER_AVOID", "DRUG", _rx(r"(?:授乳婦|授乳中の(?:患者|女性|婦人)).{0,30}(?:(?:投与|使用)(?:を)?しないこと|(?:投与|使用)を避けること)が望ましい")),
+    ("PREFER_AVOID", "BREASTFEEDING", _rx(r"授乳(?:を)?しないことが望ましい|授乳を避け(?:させ)?ることが望ましい")),
+    ("AVOID", "DRUG", _rx(r"(?:授乳婦|授乳中の(?:患者|女性|婦人)).{0,30}(?:投与|使用)(?:を)?しないこと(?!が望ましい)")),
     ("AVOID", "BREASTFEEDING", _rx(r"授乳.{0,20}(?:避け|しないこと)|授乳をさせない")),
     ("BENEFIT_RISK", "DRUG", _rx(r"(?:有益性|ベネフィット|利益).*(?:危険性|リスク).*(?:上回|上まわ|上廻)")),
     ("ACCEPTABLE", "BREASTFEEDING", _rx(r"授乳を継続できる|授乳して差し支えない|母乳栄養を継続できる")),
@@ -60,6 +67,10 @@ EXPRESSION_RULES = [
     ("HUMAN_FINDING", _rx(r"妊婦|妊娠女性|ヒト")),
 ]
 
+WOMEN_CONTEXT_EXCLUSIONS = [
+    _rx(r"HMG-CoA還元酵素阻害剤.{0,100}禁忌.{0,100}本剤との併用投与"),
+]
+
 
 def split_statements(text: str) -> List[str]:
     """原文順を保ち、句点・改行を境界として文を落とさず分割する。"""
@@ -72,6 +83,13 @@ def split_statements(text: str) -> List[str]:
 
 def classify_statement(population_type: str, text: str) -> dict:
     normalized = normalize_text(text)
+    if any(pattern.search(normalized) for pattern in WOMEN_CONTEXT_EXCLUSIONS):
+        return {
+            "expression_type": "OTHER_INFORMATION",
+            "classification_code": None,
+            "recommendation_target": None,
+            "requires_llm": False,
+        }
     rules = PREGNANCY_RULES if population_type == "PREGNANCY" else LACTATION_RULES
     for code, target, pattern in rules:
         if pattern.search(normalized):
@@ -106,7 +124,7 @@ def classification_is_supported(population_type: str, code: str, evidence: str) 
         return True
     support_patterns = {
         "CONTRAINDICATED": _rx(r"禁忌|禁止|してはならない"),
-        "AVOID": _rx(r"避け|回避|控え|しないこと"),
+        "AVOID": _rx(r"避け|回避|控え|しないこと|せず"),
         "STOP_BREASTFEEDING": _rx(r"授乳.{0,30}(?:中止|中断)|断乳|母乳.{0,30}(?:中止|中断)"),
         "PREFER_AVOID": _rx(r"望ましい|極力|可能な限り"),
         "BENEFIT_RISK": _rx(r"有益性|ベネフィット|利益|必要性"),

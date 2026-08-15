@@ -79,7 +79,7 @@ public.sgml_women_summary
 | `prepared_ym` | 添付文書作成年月 |
 | `generic_name_ja` | 一般名等の表示名 |
 | `assessment_code` | その対象区分で最も優先度が高い代表判定 |
-| `display_level` | `RED`、`YELLOW`、`BLUE`、`GRAY` |
+| `display_level` | DB生成時の既定表示区分。アプリ独自の色分けでは使用しなくてもよい |
 | `assessment_text` | 代表判定の定型表示文 |
 | `reason_statement_id` | 代表判定を支持する`sgml_women_statement.statement_id` |
 | `needs_review` | 判定不能表現が1件以上含まれるか |
@@ -90,7 +90,7 @@ public.sgml_women_summary
 
 ### 5.3 代表判定の決め方
 
-同じ薬剤・対象区分に複数の判定がある場合、次の優先度で最も強い判定を`assessment_code`へ採用します。
+同じ薬剤・対象区分に複数の判定がある場合、次の優先度で最も強い判定を`assessment_code`へ採用します。表中の色はDBに保存される既定値であり、アプリは`assessment_code`から独自に色やアイコンを割り当てられます。
 
 | 優先度 | assessment_code | 色 | 表示上の意味 |
 |---:|---|---|---|
@@ -305,10 +305,10 @@ ORDER BY population_type, display_level, assessment_code;
 
 ## 8. 推奨画面構成
 
-薬剤ごとに「妊婦」「授乳」のカードを1枚ずつ表示します。
+薬剤ごとに「妊婦」「授乳」のカードを1枚ずつ表示します。表示色は`display_level`へ固定せず、`assessment_code`を基にアプリ側で割り当てます。
 
 - 主表示: `assessment_text`
-- 色: `display_level`
+- 色・アイコン: `assessment_code`からアプリ側で決定。`display_level`は既定値として参照可能
 - 判定不能表現を含む場合: `needs_review=true`を「要原文確認」などの補助バッジで表示
 - 根拠表示: `reason_statement_id`で結んだ`evidence_text`
 - 詳細展開: 同じ`package_insert_no`と`population_type`の全statement
@@ -377,4 +377,19 @@ python3 34_publish_sgml_women.py \
 ```
 
 31はXML全体のハッシュだけでなく、妊婦・授乳ブロックの意味ハッシュを保存します。XMLの管理情報だけが変わり対象本文が同じ場合は、後段の再処理を抑制できます。33の解析結果は内容・定義・プロンプト・モデルに基づいてキャッシュされるため、中断後も成功済み解析を再送せず再開できます。
+
+分類ルールだけを変更した場合は、ブロック抽出とLLM分類をやり直す必要はありません。32で現在の全文を再分類し、34で既存LLM成功結果を再利用して再公開します。
+
+```bash
+python3 32_build_sgml_women_candidates.py
+python3 34_publish_sgml_women.py \
+  --model gemma4:12b \
+  --fallback-model gemma4:31b-cloud \
+  --dry-run
+python3 34_publish_sgml_women.py \
+  --model gemma4:12b \
+  --fallback-model gemma4:31b-cloud
+```
+
+バージョンは、ブロック抽出版、ルール定義版、LLM定義版に分離されています。ルールだけを更新してもLLM解析ハッシュは変わらないため、33を実行しない限りLLM呼び出しは発生しません。
 

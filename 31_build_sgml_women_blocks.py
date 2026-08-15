@@ -16,7 +16,7 @@ import psycopg2
 import psycopg2.extras
 
 from _sgml_note_common import checked_table_name, load_config, normalize_text, sha256_text, stable_json_hash, table_base
-from _sgml_women_common import PIPELINE_VERSION
+from _sgml_women_common import BLOCK_EXTRACTOR_VERSION
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -172,17 +172,17 @@ def main() -> None:
                         with write_conn.cursor() as wcur:
                             wcur.execute(f"SELECT raw_xml_hash, semantic_hash, extractor_version FROM {state} WHERE package_insert_no=%s AND population_type=%s", (package_no, population))
                             old = wcur.fetchone()
-                        if old and old[1] == semantic_hash and old[2] == PIPELINE_VERSION and not args.force:
+                        if old and old[1] == semantic_hash and old[2] == BLOCK_EXTRACTOR_VERSION and not args.force:
                             skipped += 1
                         else:
                             changed += 1
                             with write_conn.cursor() as wcur:
                                 wcur.execute(f"UPDATE {blocks} SET is_current=false, retired_at=now() WHERE package_insert_no=%s AND population_type=%s AND is_current", (package_no, population))
-                                rows = [(package_no, population, item["block_uid"], prepared_ym, generic_name, item["section_type"], item["section_code"], item["heading_path"], item["block_order"], item["block_text"], item["block_xml"], item["content_hash"], PIPELINE_VERSION, True, None) for item in selected]
+                                rows = [(package_no, population, item["block_uid"], prepared_ym, generic_name, item["section_type"], item["section_code"], item["heading_path"], item["block_order"], item["block_text"], item["block_xml"], item["content_hash"], BLOCK_EXTRACTOR_VERSION, True, None) for item in selected]
                                 if rows:
                                     psycopg2.extras.execute_values(wcur, f"""INSERT INTO {blocks} (package_insert_no,population_type,block_uid,prepared_ym,generic_name_ja,section_type,section_code,heading_path,block_order,block_text,block_xml,content_hash,extractor_version,is_current,retired_at) VALUES %s ON CONFLICT (package_insert_no,population_type,block_uid) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,block_order=EXCLUDED.block_order,block_text=EXCLUDED.block_text,block_xml=EXCLUDED.block_xml,extractor_version=EXCLUDED.extractor_version,is_current=true,last_seen_at=now(),retired_at=NULL""", rows)
                         with write_conn.cursor() as wcur:
-                            wcur.execute(f"""INSERT INTO {state} (package_insert_no,population_type,prepared_ym,generic_name_ja,raw_xml_hash,semantic_hash,has_section,extractor_version,processing_status,error_message) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'success',NULL) ON CONFLICT (package_insert_no,population_type) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,raw_xml_hash=EXCLUDED.raw_xml_hash,semantic_hash=EXCLUDED.semantic_hash,has_section=EXCLUDED.has_section,extractor_version=EXCLUDED.extractor_version,processing_status='success',error_message=NULL,last_seen_at=now(),last_parsed_at=now()""", (package_no, population, prepared_ym, generic_name, raw_hash, semantic_hash, bool(selected), PIPELINE_VERSION))
+                            wcur.execute(f"""INSERT INTO {state} (package_insert_no,population_type,prepared_ym,generic_name_ja,raw_xml_hash,semantic_hash,has_section,extractor_version,processing_status,error_message) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'success',NULL) ON CONFLICT (package_insert_no,population_type) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,raw_xml_hash=EXCLUDED.raw_xml_hash,semantic_hash=EXCLUDED.semantic_hash,has_section=EXCLUDED.has_section,extractor_version=EXCLUDED.extractor_version,processing_status='success',error_message=NULL,last_seen_at=now(),last_parsed_at=now()""", (package_no, population, prepared_ym, generic_name, raw_hash, semantic_hash, bool(selected), BLOCK_EXTRACTOR_VERSION))
                     write_conn.commit()
                 except Exception as exc:
                     write_conn.rollback()
