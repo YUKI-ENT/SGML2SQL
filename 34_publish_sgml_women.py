@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--package-insert-no")
     parser.add_argument("--population-type", choices=["PREGNANCY", "LACTATION"])
     parser.add_argument("--model")
+    parser.add_argument(
+        "--fallback-model",
+        action="append",
+        default=[],
+        help="主モデルにsuccessがない表現を補完するモデル。複数回指定可",
+    )
     parser.add_argument("--prompt-version")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -106,6 +112,7 @@ def main() -> None:
     model = args.model or config_with_global_fallback(
         config, "women_ollama_model", "ollama_model", "gpt-oss:20b"
     )
+    models = list(dict.fromkeys([model, *args.fallback_model]))
     prompt_version = args.prompt_version or config.get("women_prompt_version", "sgml-women-v1")
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, statement_table, summary_table)
@@ -127,11 +134,31 @@ def main() -> None:
             candidates = [dict(row) for row in cur.fetchall()]
             cur.execute(f"SELECT * FROM {state_table} WHERE {' AND '.join(state_where)} ORDER BY package_insert_no,population_type", state_params)
             states = [dict(row) for row in cur.fetchall()]
-            cur.execute(f"""SELECT r.candidate_id,r.prompt_version,r.model_name,f.classification_code,f.recommendation_target,f.assessment_text FROM {run_table} r JOIN {fact_table} f ON f.run_id=r.run_id WHERE r.status='success' AND r.prompt_version=%s AND r.model_name=%s AND f.validation_status='AUTO_VALIDATED'""", (prompt_version, model))
-            llm_facts = {row["candidate_id"]: dict(row) for row in cur.fetchall()}
+            cur.execute(
+                f"""SELECT DISTINCT ON (r.statement_hash,r.population_type)
+                           r.statement_hash,r.population_type,r.prompt_version,r.model_name,
+                           f.classification_code,f.recommendation_target,f.assessment_text
+                      FROM {run_table} r
+                      JOIN {fact_table} f ON f.run_id=r.run_id
+                     WHERE r.status='success'
+                       AND r.prompt_version=%s
+                       AND r.model_name=ANY(%s)
+                       AND f.validation_status='AUTO_VALIDATED'
+                     ORDER BY r.statement_hash,r.population_type,
+                              array_position(%s::text[],r.model_name)""",
+                (prompt_version, models, models),
+            )
+            llm_facts = {
+                (row["statement_hash"], row["population_type"]): dict(row)
+                for row in cur.fetchall()
+            }
         publication_rows = []
         for candidate in candidates:
-            llm = llm_facts.get(candidate["candidate_id"]) if candidate["requires_llm"] else None
+            llm = (
+                llm_facts.get((candidate["statement_hash"], candidate["population_type"]))
+                if candidate["requires_llm"]
+                else None
+            )
             code = llm["classification_code"] if llm else candidate["rule_classification"]
             target = llm["recommendation_target"] if llm else candidate["recommendation_target"]
             if code in CLASSIFICATION_META:
@@ -141,7 +168,7 @@ def main() -> None:
                 display_level, assessment_text = None, None
             method = "LLM" if llm else "RULE" if code and code != "UNCLASSIFIABLE" else "UNCLASSIFIED" if code else "SOURCE"
             review_status = "NEEDS_REVIEW" if code == "UNCLASSIFIABLE" else "AUTO_VALIDATED"
-            publication_rows.append((candidate["package_insert_no"], candidate["population_type"], candidate["prepared_ym"], candidate["generic_name_ja"], candidate["expression_type"], code, target, display_level, assessment_text, candidate["evidence_text"], candidate["block_id"], candidate["section_code"], candidate["section_type"], candidate["heading_path"], candidate["content_hash"], candidate["statement_hash"], method, candidate["definition_version"], prompt_version if llm else None, model if llm else None, review_status, True, None))
+            publication_rows.append((candidate["package_insert_no"], candidate["population_type"], candidate["prepared_ym"], candidate["generic_name_ja"], candidate["expression_type"], code, target, display_level, assessment_text, candidate["evidence_text"], candidate["block_id"], candidate["section_code"], candidate["section_type"], candidate["heading_path"], candidate["content_hash"], candidate["statement_hash"], method, candidate["definition_version"], llm["prompt_version"] if llm else None, llm["model_name"] if llm else None, review_status, True, None))
         log.info("公開候補 statements=%s summaries=%s", len(publication_rows), len(states))
         if args.dry_run:
             return

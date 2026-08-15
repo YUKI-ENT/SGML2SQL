@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -36,8 +37,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument("--wait-seconds", type=float)
+    parser.add_argument(
+        "--run-status",
+        choices=["incomplete", "new", "review", "error"],
+        default="incomplete",
+        help=(
+            "処理対象。incomplete=success以外、new=対象モデルで未処理のみ、"
+            "review=要確認のみ、error=エラーのみ"
+        ),
+    )
+    parser.add_argument(
+        "--source-model",
+        help="このモデルの実行結果statusを使って処理候補を絞る",
+    )
+    parser.add_argument(
+        "--source-status",
+        nargs="+",
+        choices=["success", "review", "error"],
+        help="--source-modelで選ぶstatus（省略時はreview error）",
+    )
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
+
+
+def should_process(cached_status: Optional[str], run_status: str, force: bool = False) -> bool:
+    if force:
+        return True
+    if run_status == "new":
+        return cached_status is None
+    if run_status == "review":
+        return cached_status == "review"
+    if run_status == "error":
+        return cached_status == "error"
+    return cached_status != "success"
 
 
 def build_prompt(candidate: dict) -> str:
@@ -162,16 +194,16 @@ def main() -> None:
     )
     if args.limit is not None and args.limit <= 0:
         raise ValueError("limitは1以上にしてください")
+    if wait_seconds < 0 or max_retries < 0:
+        raise ValueError("wait-secondsとmax-retriesは0以上にしてください")
+    if args.force and args.run_status != "incomplete":
+        raise ValueError("--forceと--run-status new/review/errorは同時に指定できません")
+    if args.source_status and not args.source_model:
+        raise ValueError("--source-statusを使う場合は--source-modelも指定してください")
+    if args.source_model == model:
+        raise ValueError("--source-modelは処理対象--modelと異なるモデルを指定してください")
     conn = psycopg2.connect(**config["db"])
     create_tables(conn, run_table, fact_table)
-    log.info(
-        "開始 model=%s url=%s timeout=%ss wait=%ss prompt=%s",
-        model,
-        url,
-        timeout,
-        wait_seconds,
-        prompt_version,
-    )
     where, params = ["is_current", "requires_llm"], []
     if args.package_insert_no:
         where.append("package_insert_no=%s")
@@ -183,13 +215,77 @@ def main() -> None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(f"SELECT * FROM {candidate_table} WHERE {' AND '.join(where)} ORDER BY candidate_id", params)
             candidates = [dict(row) for row in cur.fetchall()]
+        for candidate in candidates:
+            candidate["analysis_hash"] = sha256_text(
+                f"{candidate['statement_hash']}\n{PIPELINE_VERSION}\n{prompt_version}"
+            )
+        analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
+        if args.source_model:
+            selected_source_statuses = set(args.source_status or ["review", "error"])
+            source_statuses: dict[str, str] = {}
+            if analysis_hashes:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT analysis_hash,status FROM {run_table} "
+                        "WHERE model_name=%s AND analysis_hash=ANY(%s)",
+                        (args.source_model, analysis_hashes),
+                    )
+                    source_statuses = {
+                        analysis_hash: status for analysis_hash, status in cur.fetchall()
+                    }
+            candidates = [
+                candidate
+                for candidate in candidates
+                if source_statuses.get(candidate["analysis_hash"])
+                in selected_source_statuses
+            ]
+            analysis_hashes = sorted({candidate["analysis_hash"] for candidate in candidates})
+            log.info(
+                "元モデル絞込 source_model=%s source_status=%s analyses=%s candidates=%s",
+                args.source_model,
+                ",".join(sorted(selected_source_statuses)),
+                len(analysis_hashes),
+                len(candidates),
+            )
+        cached_statuses: dict[str, str] = {}
+        if analysis_hashes:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT analysis_hash,status FROM {run_table} "
+                    "WHERE model_name=%s AND analysis_hash=ANY(%s)",
+                    (model, analysis_hashes),
+                )
+                cached_statuses = {
+                    analysis_hash: status for analysis_hash, status in cur.fetchall()
+                }
+        status_counts = Counter(
+            cached_statuses.get(analysis_hash, "new") for analysis_hash in analysis_hashes
+        )
+        eligible_count = sum(
+            should_process(cached_statuses.get(analysis_hash), args.run_status, args.force)
+            for analysis_hash in analysis_hashes
+        )
+        log.info(
+            "開始 model=%s url=%s timeout=%ss wait=%ss prompt=%s mode=%s "
+            "analyses=%s eligible=%s new=%s success=%s review=%s error=%s",
+            model,
+            url,
+            timeout,
+            wait_seconds,
+            prompt_version,
+            args.run_status,
+            len(analysis_hashes),
+            eligible_count,
+            status_counts.get("new", 0),
+            status_counts.get("success", 0),
+            status_counts.get("review", 0),
+            status_counts.get("error", 0),
+        )
         called = cache_hits = success = review = error = 0
         for candidate in candidates:
-            analysis_hash = sha256_text(f"{candidate['statement_hash']}\n{PIPELINE_VERSION}\n{prompt_version}")
-            with conn.cursor() as cur:
-                cur.execute(f"SELECT status FROM {run_table} WHERE analysis_hash=%s AND model_name=%s", (analysis_hash, model))
-                cached = cur.fetchone()
-            if cached and cached[0] == "success" and not args.force:
+            analysis_hash = candidate["analysis_hash"]
+            cached_status = cached_statuses.get(analysis_hash)
+            if not should_process(cached_status, args.run_status, args.force):
                 cache_hits += 1
                 continue
             if args.limit is not None and called >= args.limit:
@@ -241,6 +337,7 @@ def main() -> None:
                 if valid is not None:
                     cur.execute(f"INSERT INTO {fact_table} (run_id,classification_code,recommendation_target,assessment_text,evidence_text,validation_status) VALUES (%s,%s,%s,%s,%s,'AUTO_VALIDATED')", (run_id, valid["classification_code"], valid["recommendation_target"], valid["assessment_text"], valid["evidence_text"]))
             conn.commit()
+            cached_statuses[analysis_hash] = status
             called += 1
             if status == "success": success += 1
             elif status == "review": review += 1

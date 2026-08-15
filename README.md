@@ -171,10 +171,14 @@
       ```bash
       python3 33_extract_sgml_women.py --limit 100
       ```
+    - ローカルモデルのreview/errorだけを別モデルで救済できます。`--run-status new`により、救済モデル側で既に処理済みの解析は再送しません。
+      ```bash
+      python3 33_extract_sgml_women.py --model gemma4:31b-cloud --source-model gemma4:12b --source-status review error --run-status new
+      ```
     - `sgml_women_statement`へ全表現を、`sgml_women_summary`へアプリ用の代表判定を公開します。
       ```bash
-      python3 34_publish_sgml_women.py --dry-run
-      python3 34_publish_sgml_women.py
+      python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
+      python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud
       ```
     - `display_level` は `RED`（禁忌・回避）、`YELLOW`（条件付き・判定不能）、`BLUE`（明示的に使用可能）、`GRAY`（記載なし）です。無記載を安全とは扱いません。
     - 中間テーブルのリセットは次の通りです。公開結果も消す場合だけ `--include-published` を付けます。
