@@ -181,6 +181,7 @@
       python3 33_5_revalidate_sgml_women.py --model gemma4:31b-cloud --execute
       ```
     - `sgml_women_statement`へ全表現を、`sgml_women_summary`へアプリ用の代表判定を公開します。
+    - 公開後のDB構成、表示色、検索SQL、RAG利用及び医療利用上の注意は [`SGML_WOMEN_APPLICATION_GUIDE.md`](SGML_WOMEN_APPLICATION_GUIDE.md) を参照してください。
       ```bash
       python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud --dry-run
       python3 34_publish_sgml_women.py --model gemma4:12b --fallback-model gemma4:31b-cloud
