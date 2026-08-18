@@ -91,6 +91,16 @@ def file_sha256(path: str, chunk_size: int = 1024 * 1024) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
+def read_original_xml_text(path: str) -> str:
+    """PMDA配布XMLを再シリアライズせず、原文のままDB保存用文字列として読む。
+
+    UTF-8 BOMはUnicode文字列には不要なので除去するが、それ以外のXML宣言、
+    コメント、処理命令（<?enter?>）、改行、名前空間プレフィックスは保持する。
+    """
+    with open(path, "r", encoding="utf-8-sig", newline="") as rf:
+        return rf.read()
+
 # ===================== XML 名前空間 & ヘルパ =====================
 PI_NS  = "http://info.pmda.go.jp/namespace/prescription_drugs/package_insert/1.0"
 XMLNS  = "http://www.w3.org/XML/1998/namespace"
@@ -386,8 +396,10 @@ def parse_xml_to_rows(xml_path: str) -> List[Dict]:
     composition_json       = elem_to_json(root.find("pi:Composition", NS))
     property_json          = elem_to_json(root.find("pi:Properties", NS))
 
-    # 全文XML（整形して保存）
-    doc_xml = ET.tostring(root, encoding="unicode")
+    # 全文XML（XML宣言・コメント・処理命令・改行等を含む原文のまま保存）
+    # ElementTreeで再シリアライズすると <?enter?> やコメントが失われるため、
+    # 解析用の tree とは別にソースファイルを直接読み込む。
+    doc_xml = read_original_xml_text(xml_path)
 
     # 平坦化相互作用
     inter_flat = collect_interactions_flat(root)
