@@ -1,0 +1,256 @@
+<?xml version='1.0' encoding='utf-8'?>
+<PackIns xmlns="http://info.pmda.go.jp/namespace/prescription_drugs/package_insert/1.0"><Interactions id="HDR_Interactions" heading="fixing">
+
+    
+
+    <PrecautionsForCombinations id="HDR_PrecautionsForCombinations" heading="fixing">
+
+      <PrecautionsForCombination>
+
+        <PrecautionsForCombi>
+
+          <WidthDefinition totalWidth="100%">
+
+            <Col width="36.08%" />
+
+            <Col width="33.33%" />
+
+            <Col width="30.59%" />
+
+          </WidthDefinition>
+
+          <Drug>
+
+            <DrugName>
+
+              <Detail>
+
+                <Lang xml:lang="ja">マオウ含有製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">葛根湯<?enter?>小青竜湯<?enter?>麻黄湯　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">エフェドリン類含有製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">エフェドリン塩酸塩<?enter?>dl-メチルエフェドリン塩酸塩<?enter?>フェキソフェナジン塩酸塩・塩酸プソイドエフェドリン　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">モノアミン酸化酵素（MAO）阻害剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">セレギリン塩酸塩<?enter?>ラサギリンメシル酸塩　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">甲状腺製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">チロキシン<?enter?>リオチロニン　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">カテコールアミン製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">アドレナリン<?enter?>イソプレナリン　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">キサンチン系製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">テオフィリン<?enter?>ジプロフィリン　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+            </DrugName>
+
+            <ClinSymptomsAndMeasures>
+
+              <Detail>
+
+                <Lang xml:lang="ja">不眠、発汗過多、頻脈、動悸、全身脱力感、精神興奮等があらわれやすくなるので、減量するなど慎重に投与すること。</Lang>
+
+              </Detail>
+
+            </ClinSymptomsAndMeasures>
+
+            <MechanismAndRiskFactors>
+
+              <Detail>
+
+                <Lang xml:lang="ja">交感神経刺激作用が増強されることが考えられる。</Lang>
+
+              </Detail>
+
+            </MechanismAndRiskFactors>
+
+          </Drug>
+
+          <Drug>
+
+            <DrugName>
+
+              <Detail>
+
+                <Lang xml:lang="ja">カンゾウ含有製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">芍薬甘草湯<?enter?>補中益気湯<?enter?>抑肝散　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">グリチルリチン酸及びその塩類を含有する製剤</Lang>
+
+              </Detail>
+
+              <SimpleList>
+
+                <Item>
+
+                  <Detail>
+
+                    <Lang xml:lang="ja">グリチルリチン酸一アンモニウム・グリシン・L-システイン<?enter?>グリチルリチン酸一アンモニウム・グリシン・DL-メチオニン配合錠　等</Lang>
+
+                  </Detail>
+
+                </Item>
+
+              </SimpleList>
+
+              <Detail>
+
+                <Lang xml:lang="ja">
+
+                  <HeaderRef ref="HDR_PMDA_ImportantPrecautions_20220414103515_2" />,<HeaderRef ref="HDR_PMDA_SeriousAdverseEvents_20220414103515_13" />,<HeaderRef ref="HDR_PMDA_SeriousAdverseEvents_20220414103515_14" /></Lang>
+
+              </Detail>
+
+            </DrugName>
+
+            <ClinSymptomsAndMeasures>
+
+              <Detail>
+
+                <Lang xml:lang="ja">偽アルドステロン症があらわれやすくなる。また、低カリウム血症の結果として、ミオパチーがあらわれやすくなる。</Lang>
+
+              </Detail>
+
+            </ClinSymptomsAndMeasures>
+
+            <MechanismAndRiskFactors>
+
+              <Detail>
+
+                <Lang xml:lang="ja">グリチルリチン酸は尿細管でのカリウム排泄促進作用があるため、血清カリウム値の低下が促進されることが考えられる。</Lang>
+
+              </Detail>
+
+            </MechanismAndRiskFactors>
+
+          </Drug>
+
+        </PrecautionsForCombi>
+
+      </PrecautionsForCombination>
+
+    </PrecautionsForCombinations>
+
+  </Interactions>
+
+  
+
+  </PackIns>

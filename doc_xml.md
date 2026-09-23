@@ -72,7 +72,11 @@ LINQ to XMLを使用する場合、要素列挙には `Nodes()` の無条件な 
 
 ### 22 interaction
 
-`22_build_sgml_interaction.py` は `doc_xml` ではなく `interactions_flat` を読むため、今回の変更による直接影響はない。
+2026-09-23の名称連結修正後、`22_build_sgml_interaction.py` は `doc_xml` を優先して再抽出する。
+相互作用の解析時のみ `<?enter?>` を改行へ変換し、`partner_name_ja`等に保持する。
+原文がNULLの行のみ `interactions_flat` へフォールバックする。古い再シリアライズ済みXMLに失われた境界は推測で復元しない。
+既存の列構成・行の単位は維持し、改行で条件や配合剤を別レコードへ分割しない。
+22のテーブル再生成と全件投入は一つのトランザクションで実行し、解析・投入失敗時は旧テーブルへ戻す。
 
 ### 31 women
 
@@ -90,7 +94,7 @@ LINQ to XMLを使用する場合、要素列挙には `Nodes()` の無条件な 
 
 - `approval_etc_json` などのJSON列の生成方法
 - `interactions_json`
-- `interactions_flat`
+- `interactions_flat`（原文保存のみを変更した当初の記録。2026-09-23の名称連結修正では改行を保持するよう変更）
 - ブランド単位の行生成
 - 主キーおよびUPSERT処理
 - `raw_xml_path`

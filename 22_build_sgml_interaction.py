@@ -4,9 +4,9 @@
 """
 22_build_sgml_interaction.py
 
-- sgml_rawdata（config.json の sgml_table）から interactions_flat を読み取り
+- sgml_rawdata の doc_xml から改行を保持して再抽出（原文NULL時のみ interactions_flat）
 - sgml_interaction（config.json の sgml_interaction_table）に平坦化して保存
-- partner_group_ja カラムを追加（現時点では None。将来的に interactions_flat 内 "group" を参照予定）
+- partner_group_ja は抽出結果の "group" を参照
 - 既存テーブルは DROP して作り直し（毎回再生成前提）
 - ログは ./logs/22_build_sgml_interaction.log
 """
@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional
 
 import psycopg2
 import psycopg2.extras
+
+from _sgml_interaction_flat import collect_interactions_from_xml
 
 # ===================== ログ設定 =====================
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -121,7 +123,8 @@ def fmt_eta(seconds: float) -> str:
     return f"{m:02d}m{s:02d}s"
 
 
-def build_interaction_rows(pkg: str, yj: str, inter_flat: Any) -> List[Dict[str, Optional[str]]]:
+def build_interaction_rows(pkg: str, yj: str, inter_flat: Any,
+                           doc_xml: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
     """
     sgml_rawdata.interactions_flat から sgml_interaction 1レコード単位に変換する。
 
@@ -138,6 +141,11 @@ def build_interaction_rows(pkg: str, yj: str, inter_flat: Any) -> List[Dict[str,
       ]
     """
     rows: List[Dict[str, Optional[str]]] = []
+
+    if doc_xml is not None:
+        # Saved flat data may have already lost PI boundaries. Never try to guess
+        # boundaries from the concatenated names; re-read the original XML.
+        inter_flat = collect_interactions_from_xml(doc_xml)["flat"]
 
     if not inter_flat:
         return rows
@@ -188,32 +196,41 @@ def main():
     conn = psycopg2.connect(**db_conf)
     try:
         with conn, conn.cursor() as cur:
-            logging.info(f"DROP -> CREATE {DST_TABLE}")
-            cur.execute(CREATE_TABLE_SQL)
-
-        with conn, conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            # interactions_flat が NULL でない行だけ対象
             cur.execute(f"""
-                SELECT package_insert_no, yj_code, interactions_flat
+                SELECT count(*)
                 FROM {SRC_TABLE}
-                WHERE interactions_flat IS NOT NULL;
+                WHERE interactions_flat IS NOT NULL OR doc_xml IS NOT NULL;
             """)
-            rows = cur.fetchall()
+            total = cur.fetchone()[0]
 
-        total = len(rows)
-        logging.info(f"source rows with interactions_flat: {total}")
+        logging.info(f"source rows with XML or interactions_flat: {total}")
+        missing_xml = 0
 
         inserted_total = 0
         t0 = time.time()
         batch: List[Dict[str, Optional[str]]] = []
 
-        with conn, conn.cursor() as cur:
-            for idx, r in enumerate(rows, start=1):
+        with conn, conn.cursor() as cur, conn.cursor(
+            name="interaction_xml_source", cursor_factory=psycopg2.extras.DictCursor
+        ) as source_cur:
+            # DDL and all inserts commit together; an XML/insert failure restores
+            # the previous table instead of leaving a newly-created empty table.
+            logging.info(f"DROP -> CREATE {DST_TABLE} (single transaction)")
+            cur.execute(CREATE_TABLE_SQL)
+            # Stream original XML instead of loading all documents into memory.
+            source_cur.itersize = BATCH_SIZE
+            source_cur.execute(f"""
+                SELECT package_insert_no, yj_code, interactions_flat, doc_xml::text AS doc_xml
+                FROM {SRC_TABLE}
+                WHERE interactions_flat IS NOT NULL OR doc_xml IS NOT NULL;
+            """)
+            for idx, r in enumerate(source_cur, start=1):
                 pkg = r["package_insert_no"]
                 yj  = r["yj_code"]
                 inter_flat = r["interactions_flat"]
+                missing_xml += r["doc_xml"] is None
 
-                new_rows = build_interaction_rows(pkg, yj, inter_flat)
+                new_rows = build_interaction_rows(pkg, yj, inter_flat, r["doc_xml"])
                 batch.extend(new_rows)
 
                 if len(batch) >= BATCH_SIZE:
@@ -236,6 +253,8 @@ def main():
                 inserted_total += len(batch)
                 batch.clear()
 
+        if missing_xml:
+            logging.warning("原文XMLなしの%d行は既存interactions_flatを使用。失われた改行は復元できません。", missing_xml)
         total_time = time.time() - t0
         logging.info(
             "===== SUMMARY =====\n"

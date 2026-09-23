@@ -24,6 +24,8 @@ import psycopg2
 import psycopg2.extras
 import xml.etree.ElementTree as ET
 
+from _sgml_interaction_flat import collect_interactions_from_xml
+
 # ===================== ログ設定 =====================
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
 LOG_DIR = "./logs"
@@ -138,112 +140,6 @@ def text_ja(detail_elem: Optional[ET.Element]) -> Optional[str]:
     return None
 
 
-def lang_text_all(detail_elem: Optional[ET.Element]) -> Optional[str]:
-    """<Lang xml:lang='ja'> の子を含む全文（itertext）"""
-    if detail_elem is None:
-        return None
-    for lang in detail_elem.findall("pi:Lang", NS):
-        if lang.get(f"{{{XMLNS}}}lang") == "ja":
-            txt = "".join(lang.itertext()).strip()
-            if txt:
-                return txt
-    return None
-
-
-# ---------- partner 名の正規化（「等」「など」を落とす） ----------
-def normalize_partner_label(s: Optional[str]) -> Optional[str]:
-    """
-    相互作用相手ラベルのノイズ除去:
-      - 前後の空白・記号を除去
-      - 単独の「等」「など」だけのエントリは捨てる
-      - 末尾の「等」「など」を削る（○○等 → ○○）
-      - 先頭の「等」「など」を削る（等セイヨウオトギリソウ… → セイヨウオトギリソウ…）
-    """
-    if not s:
-        return None
-    # 前後の空白・読点など軽く掃除
-    s = s.strip()
-    s = re.sub(r'^[、，,\s]+', '', s)
-    s = re.sub(r'[、，,\s]+$', '', s)
-
-    if not s:
-        return None
-
-    # 単独の「等」「など」はノイズなので捨てる
-    if s in ("等", "など"):
-        return None
-
-    # 末尾の「等」「など」を削る
-    s = re.sub(r'(等|など)$', '', s).strip()
-    # 先頭の「等」「など」を削る
-    s = re.sub(r'^(等|など)', '', s).strip()
-
-    if not s:
-        return None
-
-    return s
-
-
-def detail_text_full(detail_el: Optional[ET.Element]) -> Optional[str]:
-    """
-    Detail 要素から Lang.itertext() を優先して全文取得し、
-    正規化（等/などの除去など）まで行う。
-    """
-    if detail_el is None:
-        return None
-    s = lang_text_all(detail_el)
-    if not s:
-        s = text_ja(detail_el) or get_text_direct(detail_el)
-    if not s:
-        return None
-    s = s.strip()
-    return normalize_partner_label(s)
-
-
-# ---------- DrugName から「クラス」と「個別成分」を抽出 ----------
-def extract_partner_group_and_items(drug_elem: ET.Element) -> Tuple[Optional[str], List[str]]:
-    """
-    <Drug> 要素から (class_label, items) を抽出する。
-
-    class_label:
-      - <DrugName><Detail> に書かれているクラス/総称
-        例: 「強い又は中程度のCYP3A阻害剤」「抗コリン剤」
-    items:
-      - <DrugName><SimpleList><Item><Detail> に書かれている個別成分名
-        例: ["イトラコナゾール", "クラリスロマイシン", ...]
-    """
-    dn = drug_elem.find("pi:DrugName", NS)
-    if dn is None:
-        return None, []
-
-    class_label: Optional[str] = None
-    items: List[str] = []
-
-    # クラス名候補: DrugName直下の Detail
-    for det in dn.findall("pi:Detail", NS):
-        s = detail_text_full(det)
-        if s:
-            class_label = s
-            break  # 最初のものを代表とみなす
-
-    # 個別成分: SimpleList 配下
-    for it in dn.findall("pi:SimpleList/pi:Item/pi:Detail", NS):
-        s = detail_text_full(it)
-        if s:
-            items.append(s)
-
-    # 重複除去
-    seen = set()
-    uniq_items: List[str] = []
-    for n in items:
-        if n not in seen:
-            seen.add(n)
-            uniq_items.append(n)
-
-    return class_label, uniq_items
-
-
-# -------- XML要素→JSON（ロス少なめ汎用変換） --------
 def elem_to_json(el: Optional[ET.Element]):
     """属性・テキスト・子要素・tail をできるだけ保持する簡易シリアライザ"""
     if el is None:
@@ -264,91 +160,6 @@ def elem_to_json(el: Optional[ET.Element]):
     if children:
         obj["children"] = children
     return obj
-
-
-# -------- 相互作用（禁忌/注意/要約）抽出 --------
-def collect_interactions_flat(root: ET.Element) -> Dict[str, object]:
-    """
-    returns:
-      {
-        "summary": [..text..],  # SummaryOfCombination の日本語テキスト配列
-        "flat": [
-            {
-              "partner": "...",         # 個別成分名 or クラス名
-              "group":   "...",         # クラス名（ある場合）
-              "symptoms": "...",
-              "mechanism": "...",
-              "category": "併用禁忌|併用注意"
-            },
-            ...
-        ]
-      }
-    """
-    summary_parts: List[str] = []
-    for det in root.findall("pi:Interactions/pi:SummaryOfCombination//pi:Detail", NS):
-        s = lang_text_all(det) or text_ja(det) or get_text_direct(det)
-        if s:
-            summary_parts.append(s)
-
-    flat: List[Dict[str, Optional[str]]] = []
-
-    # 共通: symptoms/mechanism 抽出ヘルパ
-    def get_symptoms_and_mechanism(drug: ET.Element) -> Tuple[Optional[str], Optional[str]]:
-        symptoms  = lang_text_all(drug.find("pi:ClinSymptomsAndMeasures/pi:Detail", NS)) \
-                    or text_ja(drug.find("pi:ClinSymptomsAndMeasures/pi:Detail", NS)) \
-                    or get_text(drug, "pi:ClinSymptomsAndMeasures")
-        mechanism = lang_text_all(drug.find("pi:MechanismAndRiskFactors/pi:Detail", NS)) \
-                    or text_ja(drug.find("pi:MechanismAndRiskFactors/pi:Detail", NS)) \
-                    or get_text(drug, "pi:MechanismAndRiskFactors")
-        return symptoms, mechanism
-
-    # 10.1 併用禁忌
-    for drug in root.findall("pi:Interactions/pi:ContraIndicatedCombinations//pi:Drug", NS):
-        group_label, items = extract_partner_group_and_items(drug)
-        symptoms, mechanism = get_symptoms_and_mechanism(drug)
-
-        if items:
-            for p in items:
-                flat.append({
-                    "partner":   p,
-                    "group":     group_label,
-                    "symptoms":  symptoms,
-                    "mechanism": mechanism,
-                    "category":  "併用禁忌",
-                })
-        elif group_label:
-            flat.append({
-                "partner":   group_label,
-                "group":     group_label,
-                "symptoms":  symptoms,
-                "mechanism": mechanism,
-                "category":  "併用禁忌",
-            })
-
-    # 10.2 併用注意
-    for drug in root.findall("pi:Interactions/pi:PrecautionsForCombinations//pi:Drug", NS):
-        group_label, items = extract_partner_group_and_items(drug)
-        symptoms, mechanism = get_symptoms_and_mechanism(drug)
-
-        if items:
-            for p in items:
-                flat.append({
-                    "partner":   p,
-                    "group":     group_label,
-                    "symptoms":  symptoms,
-                    "mechanism": mechanism,
-                    "category":  "併用注意",
-                })
-        elif group_label:
-            flat.append({
-                "partner":   group_label,
-                "group":     group_label,
-                "symptoms":  symptoms,
-                "mechanism": mechanism,
-                "category":  "併用注意",
-            })
-
-    return {"summary": summary_parts, "flat": flat}
 
 
 # -------- 第1層：効能／用量（任意で列にも使う、今回はJSON併記が主） --------
@@ -401,8 +212,9 @@ def parse_xml_to_rows(xml_path: str) -> List[Dict]:
     # 解析用の tree とは別にソースファイルを直接読み込む。
     doc_xml = read_original_xml_text(xml_path)
 
-    # 平坦化相互作用
-    inter_flat = collect_interactions_flat(root)
+    # 相互作用だけ原文から別解析し、<?enter?> を改行として保持する。
+    # 他の章の既存JSON・列の解析方法は変更しない。
+    inter_flat = collect_interactions_from_xml(doc_xml)
 
     rows: List[Dict] = []
     brands = root.findall("pi:ApprovalEtc/pi:DetailBrandName", NS)

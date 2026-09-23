@@ -7,6 +7,11 @@
 ---
 
 ## 使用方法
+
+相互作用相手のコード化と未解決項目の評価には、読み取り専用の `25_resolve_sgml_interactions.py` を利用できます。
+実行方法・結果の読み方・別名辞書の更新は [相互作用コード化ガイド](SGML_INTERACTION_APPLICATION_GUIDE.md) を参照してください。
+結果はCSV・JSON・SQLiteへ出力し、既存の公開DBを更新しません。
+
 1. このリポジトリをローカル環境にクローンします。
   ```bash
   git clone https://github.com/YUKI-ENT/SGML2SQL.git
@@ -61,11 +66,12 @@
     5-10分くらいかかります。エラーやログは`logs/`フォルダに出力されます。成功すると、postgreSQLサーバーに`sgml_rawdata`テーブルが作成されます。
 
 9. **22_build_sgml_interaction.pyの実行**
-   - こちらは`sgml_rawdata`をもとに、薬剤相互作用データの抽出を行います。
+   - `sgml_rawdata.doc_xml`の原文から薬剤相互作用を再抽出します。`<?enter?>`を改行として保持するため、薬剤名が区切りなしで連結されません。列構成は従来どおりです。
+   - 保存済み原文に`<?enter?>`が残っていれば、21番の再取込なしで22番の再実行により修正を反映できます。原文がNULLの行のみ旧`interactions_flat`を使用し、警告を出します。原文から既に改行情報が失われている場合は、元XMLから21番を再実行する必要があります。
    ```bash
     python3 22_build_sgml_interaction.py
     ```
-    10-20秒くらいで終了します。成功すると、`sgml_interaction`テーブルが作成されます。
+    原文XMLを再解析するため、所要時間は文書数・サイズに依存します。成功すると、`sgml_interaction`テーブルが作成されます。
 
 10. **16章「薬物動態」のLLM抽出（試験段階）**
     - 先に16章を節・文字チャンク単位で `temp_sgml_pk_blocks` へ抽出します。
