@@ -94,7 +94,26 @@
       python3 24_build_sgml_pharmacokinetics.py --package-insert-no 6149003F2020_3_05 --model gpt-oss:20b --prompt-version pk-feature-v2 --no-publish
       ```
 
-11. **汎用 `sgml_note` パイプライン（仮実装）**
+11. **25_resolve_sgml_interactions.pyによる相互作用相手のコード化（評価用）**
+    - 21番で作成した `sgml_rawdata.doc_xml` と薬剤名マスターから相互作用相手を抽出し、名称一致やレビュー済み別名辞書でYJコードへ対応付けます。22番の出力は使用しないため、22番や23・24番の実行は前提ではありません。
+    - `config.json` の `db` と `sgml_table` を使用します。まず100文書で評価結果を作成します。
+      ```bash
+      python3 25_resolve_sgml_interactions.py build --limit 100 --output-dir logs/interaction_sample_run1
+      ```
+    - 特定の添付文書だけを確認する場合は、文書番号を指定します。
+      ```bash
+      python3 25_resolve_sgml_interactions.py build --package-insert-no 5200138C1045_1_08 --output-dir logs/interaction_maou_run1
+      ```
+    - `--limit` の既定値は100文書、全件は `--limit 0` です。全件実行では原文・結果をメモリーに保持するため、少数文書でメモリーと出力容量を確認してから実行してください。出力先には毎回新しいフォルダーを指定します（既存フォルダーは上書きしません）。
+    - 出力先の `report.md` / `summary.json` で集計、`targets.csv` で相手記載と解決状態、`unresolved.csv` で未解決理由、`codes.csv` で対応コードと根拠を確認できます。原文・対応関係は `interactions.sqlite3` にも保存します。
+    - レビュー済み別名辞書を更新した後は、保存済み結果からDB接続なしで再解決できます。
+      ```bash
+      python3 25_resolve_sgml_interactions.py resolve --input-dir logs/interaction_sample_run1 --aliases reviewed_aliases.json --previous logs/interaction_sample_run1 --output-dir logs/interaction_sample_run2
+      ```
+    - PostgreSQLへの接続は読み取り専用です。既存の `sgml_interaction` 等は更新せず、OQSDrugへの本番連携・PostgreSQLへの公開は未実装です。群の範囲や除外・経路条件など、評価できない記載は未解決として残します。
+    - 別名辞書の書式、状態の読み方、全桁YJコードによる双方向照合（`check`）は [相互作用コード化ガイド](SGML_INTERACTION_APPLICATION_GUIDE.md) を参照してください。
+
+12. **汎用 `sgml_note` パイプライン（仮実装）**
     - 公開後のDB構成、アプリ検索、RAG利用及び医療利用上の注意は [`SGML_NOTE_APPLICATION_GUIDE.md`](SGML_NOTE_APPLICATION_GUIDE.md) を参照してください。
     - `sgml_rawdata` 作成後、添付文書を意味ブロックへ差分展開します。XML全体が変更されても、意味ブロックのハッシュが同じならLLM処理は再実行されません。
       ```bash
@@ -163,7 +182,7 @@
       ```
       44で公開した `sgml_note` も含める場合は `--include-published --execute` を指定します。
 
-12. **妊婦・授乳の全文表現とアプリ向け判定（31–35系）**
+13. **妊婦・授乳の全文表現とアプリ向け判定（31–35系）**
     - 既存の `31_rawdata2women.py` / `32_label_women_risk.py` は旧方式として残しています。
     - 関連章を差分管理可能なblockへ抽出します。章がない場合も `SECTION_ABSENT` 判定用の状態を保存します。
       ```bash
