@@ -35,6 +35,8 @@
     "Pharmacokinetics", "ResultsOfClinicalTrials", "EfficacyPharmacology"
   ],
   "DI_folder": "./SGML/pmda_all_sgml_xml_20251116/SGML_XML/",
+  "sgml_use_file_list_dates": true,
+  "sgml_update_lookback_months": 1,
   "sgml_table": "public.sgml_rawdata",
   "sgml_interaction_table": "public.sgml_interaction",
   "temp_sgml_pk_blocks_table": "public.temp_sgml_pk_blocks",

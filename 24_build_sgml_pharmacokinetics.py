@@ -443,6 +443,10 @@ def process_llm_calls(
     if package_insert_no:
         where.append("b.package_insert_no = %s")
         params.append(package_insert_no)
+    # 文書更新日の判定は23で行い、未更新文書のブロックを保持する。
+    # 新規・失敗・要確認は日付で隠さず、成功キャッシュだけを除外する。
+    if not force:
+        where.append("r.status IS DISTINCT FROM 'success'")
     where_sql = "WHERE " + " AND ".join(where) if where else ""
 
     sql = f"""

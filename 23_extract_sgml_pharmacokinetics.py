@@ -8,6 +8,8 @@ sgml_rawdata.doc_xml から16章「薬物動態」を節・チャンク単位で
 配布対象の sgml_* テーブルや OQSDrug の ai_* テーブルには触れない。
 """
 
+from _sgml_source_dates import DocumentGate
+
 import argparse
 import hashlib
 import json
@@ -61,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, help="抽出する添付文書数の上限（試験用）")
     parser.add_argument("--chunk-length", type=int, help="チャンク最大文字数")
     parser.add_argument("--chunk-overlap", type=int, help="隣接チャンクの重複文字数")
+    parser.add_argument("--force", action="store_true", help="更新日が同じでも再抽出")
     return parser.parse_args()
 
 
@@ -277,68 +280,50 @@ def main() -> None:
     documents_with_pk = 0
     inserted = 0
     failed = 0
-    batch: List[Tuple] = []
 
     try:
         with write_conn.cursor() as cur:
             cur.execute(ddl)
-            if args.package_insert_no:
-                cur.execute(
-                    f"DELETE FROM {block_table} WHERE package_insert_no = %s",
-                    (args.package_insert_no,),
-                )
-            elif args.limit is None:
-                cur.execute(f"TRUNCATE TABLE {block_table} RESTART IDENTITY")
-            else:
-                log.warning(
-                    "--limit 指定のため既存ブロックは削除しません。"
-                    "全件再構築時は --limit を外してください。"
-                )
             write_conn.commit()
-
+        gate = DocumentGate(write_conn, config, src_table, block_table,
+                            ["pk-block-v1", chunk_length, chunk_overlap])
         with read_conn.cursor(name="cur_pk_xml") as scan:
             scan.itersize = max(10, min(batch_size, 500))
             scan.execute(select_sql, params)
-            with write_conn.cursor() as out:
-                for package_insert_no, prepared_ym, generic_name_ja, xml_text in scan:
-                    documents += 1
-                    try:
-                        new_rows = extract_rows(
-                            package_insert_no,
-                            prepared_ym,
-                            generic_name_ja,
-                            xml_text,
-                            chunk_length,
-                            chunk_overlap,
-                        )
-                    except Exception:
-                        failed += 1
-                        log.exception("XML抽出失敗: package_insert_no=%s", package_insert_no)
-                        continue
-
-                    if new_rows:
-                        documents_with_pk += 1
-                        batch.extend(new_rows)
-
-                    if len(batch) >= batch_size:
-                        psycopg2.extras.execute_values(out, insert_sql, batch, page_size=batch_size)
+            for package_insert_no, prepared_ym, generic_name_ja, xml_text in scan:
+                documents += 1
+                try:
+                    if gate.skip(package_insert_no, args.force):
                         write_conn.commit()
-                        inserted += len(batch)
-                        batch.clear()
-
-                    if documents % progress_every == 0:
-                        log.info(
-                            "進捗 documents=%s with_pk=%s blocks=%s failed=%s",
-                            f"{documents:,}",
-                            f"{documents_with_pk:,}",
-                            f"{inserted:,}",
-                            f"{failed:,}",
-                        )
-
-                if batch:
-                    psycopg2.extras.execute_values(out, insert_sql, batch, page_size=batch_size)
+                        continue
+                    new_rows = extract_rows(package_insert_no, prepared_ym, generic_name_ja,
+                                            xml_text, chunk_length, chunk_overlap)
+                    with write_conn.cursor() as out:
+                        out.execute(f"DELETE FROM {block_table} WHERE package_insert_no=%s", (package_insert_no,))
+                        if new_rows:
+                            psycopg2.extras.execute_values(out, insert_sql, new_rows, page_size=batch_size)
+                    gate.success(package_insert_no, len(new_rows))
                     write_conn.commit()
-                    inserted += len(batch)
+                    inserted += len(new_rows)
+                    documents_with_pk += bool(new_rows)
+                except Exception:
+                    write_conn.rollback()
+                    gate.invalidate(package_insert_no)
+                    write_conn.commit()
+                    failed += 1
+                    log.exception("XML抽出失敗: package_insert_no=%s", package_insert_no)
+                if documents % progress_every == 0:
+                    log.info("進捗 documents=%s blocks=%s date_same=%s failed=%s",
+                             documents, inserted, gate.skipped, failed)
+        # 全件走査時のみ配布対象から消えた文書を除く。部分実行では他文書を保持。
+        if args.package_insert_no is None and args.limit is None:
+            with write_conn.cursor() as cur:
+                cur.execute(f"DELETE FROM {block_table} b WHERE NOT EXISTS "
+                            f"(SELECT 1 FROM {src_table} s WHERE s.package_insert_no=b.package_insert_no AND s.doc_xml IS NOT NULL)")
+                cur.execute(f"DELETE FROM {gate.table} g WHERE NOT EXISTS "
+                            f"(SELECT 1 FROM {src_table} s WHERE s.package_insert_no=g.package_insert_no AND s.doc_xml IS NOT NULL)")
+            write_conn.commit()
+        log.info("更新日一致による省略 documents=%s", gate.skipped)
 
         elapsed = time.time() - started
         log.info(

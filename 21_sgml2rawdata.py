@@ -24,6 +24,7 @@ import psycopg2
 import psycopg2.extras
 import xml.etree.ElementTree as ET
 
+from _sgml_source_dates import FileList
 from _sgml_interaction_flat import collect_interactions_from_xml
 
 # ===================== ログ設定 =====================
@@ -328,6 +329,8 @@ CREATE TABLE {TABLE_NAME} (
   -- 全文
   doc_xml                   xml,
 
+  source_update_date    date,
+  source_download_date  date,
   raw_xml_path          text,
   updated_at            timestamptz DEFAULT now(),
 
@@ -357,7 +360,7 @@ INSERT INTO {TABLE_NAME}
  approval_etc_json, indications_json, info_dose_admin_json,
  interactions_json, adverse_reactions_json, composition_json, property_json,
  interactions_flat, doc_xml,
- raw_xml_path, updated_at)
+ raw_xml_path, source_update_date, source_download_date, updated_at)
 VALUES
 (%(package_insert_no)s, %(yj_code)s, %(company_identifier)s, %(prepared_ym)s,
  %(brand_name_ja)s, %(brand_name_hiragana)s, %(trademark_en)s,
@@ -366,7 +369,7 @@ VALUES
  %(approval_etc_json)s, %(indications_json)s, %(info_dose_admin_json)s,
  %(interactions_json)s, %(adverse_reactions_json)s, %(composition_json)s, %(property_json)s,
  %(interactions_flat)s, %(doc_xml)s,
- %(raw_xml_path)s, now())
+ %(raw_xml_path)s, %(source_update_date)s, %(source_download_date)s, now())
 ON CONFLICT (package_insert_no, yj_code) DO UPDATE SET
  company_identifier     = EXCLUDED.company_identifier,
  prepared_ym            = EXCLUDED.prepared_ym,
@@ -388,6 +391,8 @@ ON CONFLICT (package_insert_no, yj_code) DO UPDATE SET
  interactions_flat      = EXCLUDED.interactions_flat,
  doc_xml                = EXCLUDED.doc_xml,
  raw_xml_path           = EXCLUDED.raw_xml_path,
+ source_update_date     = EXCLUDED.source_update_date,
+ source_download_date   = EXCLUDED.source_download_date,
  updated_at             = now();
 """
 
@@ -474,6 +479,7 @@ def main():
     with open(FAILED_CSV, "w", encoding="utf-8") as wf:
         wf.write("file,error,exception,seconds\n")
 
+    file_list = FileList(config)
     conn = psycopg2.connect(**db_conf)
     t0 = time.time()
     try:
@@ -489,6 +495,9 @@ def main():
             start = time.time()
             try:
                 rows = parse_xml_to_rows(xml_path)
+                for row in rows:
+                    row["source_update_date"] = file_list.updated(xml_path)
+                    row["source_download_date"] = file_list.downloaded
                 inserted = upsert_rows(conn, rows)
                 elapsed = time.time() - start
 

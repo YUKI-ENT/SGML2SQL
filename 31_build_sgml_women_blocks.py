@@ -17,6 +17,7 @@ import psycopg2.extras
 
 from _sgml_note_common import checked_table_name, load_config, normalize_text, sha256_text, stable_json_hash, table_base
 from _sgml_women_common import BLOCK_EXTRACTOR_VERSION
+from _sgml_source_dates import DocumentGate
 
 
 SCRIPT_BASENAME = os.path.splitext(os.path.basename(__file__))[0]
@@ -148,6 +149,7 @@ def main() -> None:
         raise ValueError("limitは1以上にしてください")
     read_conn, write_conn = psycopg2.connect(**config["db"]), psycopg2.connect(**config["db"])
     create_tables(write_conn, state, blocks)
+    gate = DocumentGate(write_conn, config, src, blocks, BLOCK_EXTRACTOR_VERSION, current_only=True)
     where, params = ["doc_xml IS NOT NULL"], []
     if args.package_insert_no:
         where.append("package_insert_no=%s")
@@ -165,6 +167,12 @@ def main() -> None:
                 scanned += 1
                 raw_hash = sha256_text(xml_text)
                 try:
+                    with write_conn.cursor() as check:
+                        check.execute(f"SELECT count(*) FROM {state} WHERE package_insert_no=%s AND processing_status='success' AND extractor_version=%s", (package_no, BLOCK_EXTRACTOR_VERSION))
+                        state_ok = check.fetchone()[0] == 2
+                    if state_ok and gate.skip(package_no, args.force):
+                        write_conn.commit()
+                        continue
                     extracted = extract_population_blocks(xml_text)
                     for population in ("PREGNANCY", "LACTATION"):
                         selected = [item for item in extracted if item["population_type"] == population]
@@ -172,7 +180,7 @@ def main() -> None:
                         with write_conn.cursor() as wcur:
                             wcur.execute(f"SELECT raw_xml_hash, semantic_hash, extractor_version FROM {state} WHERE package_insert_no=%s AND population_type=%s", (package_no, population))
                             old = wcur.fetchone()
-                        if old and old[1] == semantic_hash and old[2] == BLOCK_EXTRACTOR_VERSION and not args.force:
+                        if gate.compatible(package_no) and old and old[1] == semantic_hash and old[2] == BLOCK_EXTRACTOR_VERSION and not args.force:
                             skipped += 1
                         else:
                             changed += 1
@@ -183,11 +191,15 @@ def main() -> None:
                                     psycopg2.extras.execute_values(wcur, f"""INSERT INTO {blocks} (package_insert_no,population_type,block_uid,prepared_ym,generic_name_ja,section_type,section_code,heading_path,block_order,block_text,block_xml,content_hash,extractor_version,is_current,retired_at) VALUES %s ON CONFLICT (package_insert_no,population_type,block_uid) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,block_order=EXCLUDED.block_order,block_text=EXCLUDED.block_text,block_xml=EXCLUDED.block_xml,extractor_version=EXCLUDED.extractor_version,is_current=true,last_seen_at=now(),retired_at=NULL""", rows)
                         with write_conn.cursor() as wcur:
                             wcur.execute(f"""INSERT INTO {state} (package_insert_no,population_type,prepared_ym,generic_name_ja,raw_xml_hash,semantic_hash,has_section,extractor_version,processing_status,error_message) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'success',NULL) ON CONFLICT (package_insert_no,population_type) DO UPDATE SET prepared_ym=EXCLUDED.prepared_ym,generic_name_ja=EXCLUDED.generic_name_ja,raw_xml_hash=EXCLUDED.raw_xml_hash,semantic_hash=EXCLUDED.semantic_hash,has_section=EXCLUDED.has_section,extractor_version=EXCLUDED.extractor_version,processing_status='success',error_message=NULL,last_seen_at=now(),last_parsed_at=now()""", (package_no, population, prepared_ym, generic_name, raw_hash, semantic_hash, bool(selected), BLOCK_EXTRACTOR_VERSION))
+                    gate.success(package_no, len(extracted))
                     write_conn.commit()
                 except Exception as exc:
                     write_conn.rollback()
+                    gate.invalidate(package_no)
+                    write_conn.commit()
                     failed += 1
                     log.warning("抽出失敗 package=%s: %s", package_no, exc)
+        log.info("更新日一致による省略 documents=%s", gate.skipped)
         log.info("完了 scanned=%s changed=%s skipped=%s failed=%s", scanned, changed, skipped, failed)
     finally:
         read_conn.close()
@@ -196,4 +208,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

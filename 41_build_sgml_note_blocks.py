@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from _sgml_source_dates import DocumentGate
+
 import argparse
 import json
 import logging
@@ -362,6 +364,8 @@ def main() -> None:
     read_conn = psycopg2.connect(**config["db"])
     write_conn = psycopg2.connect(**config["db"])
     create_tables(write_conn, state_table, block_table)
+    gate = DocumentGate(write_conn, config, src_table, block_table,
+                        [extractor_version, max_length, sorted(included_top_sections)], current_only=True)
     where = ["doc_xml IS NOT NULL"]
     params: List[object] = []
     if args.package_insert_no:
@@ -410,11 +414,14 @@ def main() -> None:
                 try:
                     with write_conn.cursor() as cur:
                         cur.execute(
-                            f"SELECT raw_xml_hash, semantic_manifest_hash, extractor_version FROM {state_table} WHERE package_insert_no = %s",
+                            f"SELECT raw_xml_hash, semantic_manifest_hash, extractor_version, processing_status FROM {state_table} WHERE package_insert_no = %s",
                             (package_insert_no,),
                         )
                         old = cur.fetchone()
-                    if old and old[0] == raw_hash and old[2] == extractor_version and not args.force:
+                    if old and old[2] == extractor_version and old[3] == "success" and gate.skip(package_insert_no, args.force):
+                        write_conn.commit()
+                        continue
+                    if gate.compatible(package_insert_no) and old and old[3] == "success" and old[0] == raw_hash and old[2] == extractor_version and not args.force:
                         skipped_raw += 1
                         with write_conn.cursor() as cur:
                             cur.execute(
@@ -425,12 +432,13 @@ def main() -> None:
                                 f"UPDATE {state_table} SET prepared_ym=%s, generic_name_ja=%s, last_seen_at=now() WHERE package_insert_no=%s",
                                 (prepared_ym, generic_name_ja, package_insert_no),
                             )
+                        gate.success(package_insert_no, gate.counts.get(package_insert_no, 0))
                         write_conn.commit()
                         continue
 
                     blocks = extract_blocks(xml_text, max_length, included_top_sections)
                     manifest_hash = stable_json_hash(sorted(block["block_uid"] for block in blocks))
-                    if old and old[1] == manifest_hash and not args.force:
+                    if old and old[1] == manifest_hash and gate.counts.get(package_insert_no, 0) == len(blocks) and not args.force:
                         semantic_same += 1
                         with write_conn.cursor() as cur:
                             cur.execute(
@@ -446,6 +454,7 @@ def main() -> None:
                                      WHERE package_insert_no=%s""",
                                 (prepared_ym, generic_name_ja, raw_hash, extractor_version, package_insert_no),
                             )
+                        gate.success(package_insert_no, gate.counts.get(package_insert_no, 0))
                         write_conn.commit()
                         continue
 
@@ -499,10 +508,12 @@ def main() -> None:
                                 raw_hash, manifest_hash, len(blocks), extractor_version,
                             ),
                         )
+                    gate.success(package_insert_no, len(blocks))
                     write_conn.commit()
                     changed += 1
                 except Exception as exc:
                     write_conn.rollback()
+                    gate.invalidate(package_insert_no)
                     failed += 1
                     log.exception("ブロック構築失敗 package=%s", package_insert_no)
                     with write_conn.cursor() as cur:
@@ -528,6 +539,7 @@ def main() -> None:
     finally:
         read_conn.close()
         write_conn.close()
+    log.info("更新日一致による省略 documents=%s", gate.skipped)
     log.info(
         "完了 scanned=%s changed=%s raw_same=%s semantic_same=%s failed=%s elapsed=%.1fs",
         scanned, changed, skipped_raw, semantic_same, failed, time.time() - started,
