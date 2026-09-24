@@ -17,6 +17,8 @@ from typing import List, Optional
 import psycopg2
 import psycopg2.extras
 
+from _sgml_note_update_scope import prepare_scope, scope_filter
+
 from _sgml_note_common import (
     build_prompt,
     call_ollama,
@@ -75,7 +77,8 @@ def parse_args() -> argparse.Namespace:
         choices=["success", "review", "error"],
         help="--source-modelで選ぶstatus（例: --source-status review error）",
     )
-    parser.add_argument("--force", action="store_true", help="成功済みキャッシュも再実行")
+    parser.add_argument("--force", action="store_true", help="文書更新日と成功キャッシュを無視して再実行")
+    parser.add_argument("--dry-run", action="store_true", help="更新対象と送信予定件数のみ表示（DB変更・LLM送信なし）")
     return parser.parse_args()
 
 
@@ -200,7 +203,8 @@ def main() -> None:
         raise ValueError("--source-modelは処理対象--modelと異なるモデルを指定してください")
 
     conn = psycopg2.connect(**config["db"])
-    create_tables(conn, run_table, fact_table)
+    if not args.dry_run:
+        create_tables(conn, run_table, fact_table)
     where = ["c.is_current", "b.is_current"]
     params: List[object] = []
     if args.package_insert_no:
@@ -211,6 +215,12 @@ def main() -> None:
         params.append(args.note_type)
     selected_pairs = {(item["note_type"], item["definition_version"]) for item in definitions}
     try:
+        prepare_scope(conn, config, list(definitions_by_type), args.package_insert_no,
+                      force=args.force, dry_run=args.dry_run)
+        where.append(scope_filter("c"))
+        with conn.cursor() as cur:
+            cur.execute('SELECT to_regclass(%s)', (run_table,))
+            has_runs = cur.fetchone()[0] is not None
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""SELECT c.candidate_id, c.package_insert_no, c.content_hash,
@@ -238,7 +248,7 @@ def main() -> None:
         if args.source_model:
             selected_source_statuses = set(args.source_status or ["review", "error"])
             source_statuses: dict[str, str] = {}
-            if analysis_hashes:
+            if analysis_hashes and has_runs:
                 with conn.cursor() as cur:
                     cur.execute(
                         f"SELECT analysis_hash, status FROM {run_table} "
@@ -261,7 +271,7 @@ def main() -> None:
                 len(analysis_hashes),
             )
         cached_statuses: dict[str, str] = {}
-        if analysis_hashes:
+        if analysis_hashes and has_runs:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT analysis_hash, status FROM {run_table} "
@@ -291,17 +301,22 @@ def main() -> None:
             status_counts.get("error", 0),
         )
 
+        if args.dry_run:
+            log.info("実行予定 LLM送信=%s（DB変更・LLM送信なし）", min(eligible_count, args.limit) if args.limit else eligible_count)
+            return
         called = succeeded = reviewed = errors = cache_hits = 0
+        attempted_hashes = set()
         for candidate in candidates:
             definition = definitions_by_type[candidate["note_type"]]
             analysis_hash = candidate["analysis_hash"]
             cached_status = cached_statuses.get(analysis_hash)
-            if not should_process(cached_status, args.run_status, args.force):
+            if analysis_hash in attempted_hashes or not should_process(cached_status, args.run_status, args.force):
                 cache_hits += 1
                 continue
             if args.limit is not None and called >= args.limit:
                 break
 
+            attempted_hashes.add(analysis_hash)
             prompt = build_prompt(definition, candidate)
             base_prompt = prompt
             request_at = datetime.now(timezone.utc)
@@ -440,6 +455,8 @@ def main() -> None:
             conn.commit()
             cached_statuses[analysis_hash] = status
             called += 1
+            if called % 50 == 0:
+                log.info("LLM進捗 processed=%s planned=%s", called, min(eligible_count, args.limit) if args.limit else eligible_count)
             if status == "success":
                 succeeded += 1
             elif status == "review":

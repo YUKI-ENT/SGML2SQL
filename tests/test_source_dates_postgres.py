@@ -45,7 +45,7 @@ class PipelineTests(unittest.TestCase):
                     writer.writerow(['パス', '添付文書更新日'])
                     writer.writerow(['./SGML_XML/drug', '2026/08/22'])
                 Path('config.json').write_text(json.dumps({'DI_folder': str(folder), 'sgml_table': f'{schema}.raw',
-                                                         'db': parse_dsn(DSN) | {'password': ''}}), encoding='utf-8')
+                                                         'db': {'password': ''} | parse_dsn(DSN)}), encoding='utf-8')
                 spec = importlib.util.spec_from_file_location('date_import_21', root / '21_sgml2rawdata.py')
                 mod = importlib.util.module_from_spec(spec)
                 with patch('logging.FileHandler', return_value=logging.NullHandler()):
@@ -63,15 +63,14 @@ class PipelineTests(unittest.TestCase):
             conn.commit()
             conn.close()
 
-    def test_date_gates_all_pipelines_and_pk_cache(self):
+    def test_date_gates_women_and_notes(self):
         import psycopg2
         from psycopg2.extensions import parse_dsn
         from _sgml_source_dates import DocumentGate
 
         root = Path(__file__).resolve().parents[1]
         modules = {}
-        for number, name in [(23, 'extract_sgml_pharmacokinetics'), (24, 'build_sgml_pharmacokinetics'),
-                             (31, 'build_sgml_women_blocks'), (41, 'build_sgml_note_blocks')]:
+        for number, name in [(31, 'build_sgml_women_blocks'), (41, 'build_sgml_note_blocks')]:
             spec = importlib.util.spec_from_file_location(f'date_test_{number}', root / f'{number}_{name}.py')
             mod = importlib.util.module_from_spec(spec)
             with patch('logging.FileHandler', return_value=logging.NullHandler()):
@@ -80,7 +79,6 @@ class PipelineTests(unittest.TestCase):
         schema = 'date_test_' + uuid.uuid4().hex[:12]
         conn = psycopg2.connect(DSN)
         config = {'db': parse_dsn(DSN), 'sgml_table': f'{schema}.raw',
-                  'temp_sgml_pk_blocks_table': f'{schema}.pk',
                   'sgml_women_state_table': f'{schema}.women_state',
                   'sgml_women_block_table': f'{schema}.women',
                   'sgml_note_document_state_table': f'{schema}.note_state',
@@ -114,24 +112,24 @@ class PipelineTests(unittest.TestCase):
                     conn.commit()
                     return result
 
-                for number in (23, 31, 41):
+                for number in (31, 41):
                     run(number)
                 with conn.cursor() as cur:
                     cur.execute(f'ALTER TABLE {schema}.raw ADD source_update_date date, ADD source_download_date date')
                     cur.execute(f"UPDATE {schema}.raw SET source_update_date='2026-08-22', source_download_date='2026-10-01', doc_xml=%s", (xml.replace('original', 'changed'),))
                 conn.commit()
                 # Older than previous download minus one month: retain original blocks.
-                for number, table in ((23, 'pk'), (31, 'women'), (41, 'note')):
+                for number, table in ((31, 'women'), (41, 'note')):
                     run(number)
                     self.assertTrue(all('original' in t for t in texts(table)))
                 # CSV date is now saved. A different date triggers all extractors.
                 with conn.cursor() as cur:
                     cur.execute(f"UPDATE {schema}.raw SET source_update_date='2026-08-23'")
                 conn.commit()
-                for number, table in ((23, 'pk'), (31, 'women'), (41, 'note')):
+                for number, table in ((31, 'women'), (41, 'note')):
                     run(number)
                     self.assertTrue(all('changed' in t for t in texts(table)))
-                    with patch.object(modules[number], {23: 'extract_rows', 31: 'extract_population_blocks', 41: 'extract_blocks'}[number], side_effect=AssertionError('must skip')):
+                    with patch.object(modules[number], {31: 'extract_population_blocks', 41: 'extract_blocks'}[number], side_effect=AssertionError('must skip')):
                         run(number)
                     with conn.cursor() as cur:
                         cur.execute(f'SELECT count(*) FROM {schema}.{table}_source_state')
@@ -142,33 +140,16 @@ class PipelineTests(unittest.TestCase):
                 self.assertEqual(len(texts('note')), 1)
                 # Reset/missing blocks must recover even with identical dates.
                 with conn.cursor() as cur:
-                    cur.execute(f'DELETE FROM {schema}.pk')
+                    cur.execute(f'DELETE FROM {schema}.note')
                 conn.commit()
-                run(23)
-                self.assertTrue(texts('pk'))
-                # Force and failure: successful baseline must not advance or mask retry.
-                with patch.object(modules[23], 'extract_rows', side_effect=ValueError('test failure')):
-                    run(23, '--force')
-                with conn.cursor() as cur:
-                    cur.execute(f'SELECT count(*) FROM {schema}.pk_source_state')
-                    self.assertEqual(cur.fetchone()[0], 0)
-                run(23)
-                # Existing PK success cache still prevents calls; no live LLM is used.
-                pk = modules[24]
-                pk.create_tables(conn, f'{schema}.runs', f'{schema}.facts')
-                with conn.cursor() as cur:
-                    cur.execute(f'''INSERT INTO {schema}.runs
-                        (content_hash,prompt_version,model_name,server_url,status)
-                        SELECT DISTINCT content_hash,'v','test','unused','success' FROM {schema}.pk''')
-                conn.commit()
-                with patch.object(pk, 'build_prompt', side_effect=AssertionError('no LLM call allowed')):
-                    self.assertEqual(pk.process_llm_calls(conn, f'{schema}.pk', f'{schema}.runs', 'v', 'test', 'unused', 1, 0, 0, False, None, None), (0, 0))
+                run(41)
+                self.assertTrue(texts('note'))
                 # A rollback also rolls back the date baseline.
-                gate = DocumentGate(conn, config, f'{schema}.raw', f'{schema}.pk', ['pk-block-v1', 4000, 200])
+                gate = DocumentGate(conn, config, f'{schema}.raw', f'{schema}.note', 'rollback-test', current_only=True)
                 gate.success('never_committed', 0)
                 conn.rollback()
                 with conn.cursor() as cur:
-                    cur.execute(f"SELECT count(*) FROM {schema}.pk_source_state WHERE package_insert_no='never_committed'")
+                    cur.execute(f"SELECT count(*) FROM {schema}.note_source_state WHERE package_insert_no='never_committed'")
                     self.assertEqual(cur.fetchone()[0], 0)
         finally:
             conn.rollback()

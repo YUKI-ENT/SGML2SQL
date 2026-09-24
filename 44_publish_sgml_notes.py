@@ -13,6 +13,8 @@ from typing import Dict, List, Tuple
 import psycopg2
 import psycopg2.extras
 
+from _sgml_note_update_scope import prepare_scope, scope_filter, finish_scope
+
 from _sgml_note_common import (
     checked_table_name,
     config_with_global_fallback,
@@ -126,10 +128,13 @@ def main() -> None:
     prompt_version = args.prompt_version or config.get("note_prompt_version", "sgml-note-v4")
 
     conn = psycopg2.connect(**config["db"])
-    create_table(conn, note_table)
+    if not args.dry_run:
+        create_table(conn, note_table)
     definition_versions = {(item["note_type"], item["definition_version"]) for item in definitions}
     note_types = [item["note_type"] for item in definitions]
+    update_state = prepare_scope(conn, config, note_types, args.package_insert_no, dry_run=args.dry_run)
     where = [
+        scope_filter("c"),
         "c.is_current",
         "b.is_current",
         "f.validation_status IN ('AUTO_VALIDATED', 'HUMAN_REVIEWED')",
@@ -166,7 +171,7 @@ def main() -> None:
        ORDER BY c.package_insert_no, c.note_type, f.fact_hash, b.block_id
     """
     try:
-        coverage_where = ["c.is_current", "b.is_current", "c.note_type = ANY(%s)"]
+        coverage_where = [scope_filter("c"), "c.is_current", "b.is_current", "c.note_type = ANY(%s)"]
         coverage_params: List[object] = [prompt_version, models, note_types]
         if args.package_insert_no:
             coverage_where.append("c.package_insert_no=%s")
@@ -242,6 +247,7 @@ def main() -> None:
             return
 
         deactivate_where = [
+            scope_filter("published"),
             "review_status IN ('AUTO_VALIDATED', 'HUMAN_REVIEWED')",
             "is_current",
             "note_type = ANY(%s)",
@@ -252,7 +258,7 @@ def main() -> None:
             deactivate_params.append(args.package_insert_no)
         with conn.cursor() as cur:
             cur.execute(
-                f"""UPDATE {note_table}
+                f"""UPDATE {note_table} AS published
                        SET is_current=false, superseded_at=now()
                      WHERE {' AND '.join(deactivate_where)}""",
                 deactivate_params,
@@ -310,6 +316,7 @@ def main() -> None:
                     values,
                     page_size=500,
                 )
+        finish_scope(conn, update_state, incomplete)
         conn.commit()
         log.info("公開完了 notes=%s", len(rows))
     except Exception:

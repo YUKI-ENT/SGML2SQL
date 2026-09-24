@@ -12,6 +12,8 @@ from typing import List
 
 import psycopg2
 
+from _sgml_note_update_scope import state_table_name
+
 from _sgml_note_common import checked_table_name, load_config
 
 
@@ -36,6 +38,7 @@ def parse_args() -> argparse.Namespace:
 
 def target_tables(config: dict, include_published: bool) -> List[str]:
     tables = [
+        state_table_name(config),
         checked_table_name(
             config.get("temp_sgml_note_fact_table", "public.temp_sgml_note_fact"),
             "temp_sgml_note_fact_table",
@@ -78,7 +81,13 @@ def main() -> None:
     conn = psycopg2.connect(**config["db"])
     try:
         with conn.cursor() as cur:
+            existing_tables = []
             for table in tables:
+                cur.execute("SELECT to_regclass(%s)", (table,))
+                if cur.fetchone()[0] is None:
+                    log.info("未作成のため対象外 table=%s", table)
+                    continue
+                existing_tables.append(table)
                 cur.execute(f"SELECT count(*) FROM {table}")
                 log.info("対象 table=%s rows=%s", table, cur.fetchone()[0])
 
@@ -91,6 +100,9 @@ def main() -> None:
                 )
             return
 
+        tables = existing_tables
+        if not tables:
+            return
         sql = "TRUNCATE TABLE " + ", ".join(tables) + " RESTART IDENTITY"
         with conn.cursor() as cur:
             cur.execute(sql)
